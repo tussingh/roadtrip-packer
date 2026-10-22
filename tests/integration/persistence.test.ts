@@ -73,7 +73,7 @@ describe('Scenario F — offline restart keeps trips, inventory and progress', (
 });
 
 describe('schema migrations', () => {
-  it('upgrades a version-1 database without losing trips or checklist items', async () => {
+  it('upgrades a version-1 database to the current version without losing trips or checklist items', async () => {
     const name = `legacy-${Date.now()}`;
     const v1 = await openDB(name, 1, {
       upgrade(db) {
@@ -91,7 +91,7 @@ describe('schema migrations', () => {
 
     const db = await openMilestoneDB(name, SCHEMA_VERSION);
     expect([...db.objectStoreNames].sort()).toEqual(
-      ['alwaysPack', 'checklist', 'inventory', 'mapChunks', 'mapRegions', 'meta', 'profiles', 'reviews', 'savedPlaces', 'savedRoutes', 'stats', 'trips'].sort(),
+      ['alwaysPack', 'checklist', 'device', 'inventory', 'mapChunks', 'mapRegions', 'meta', 'profiles', 'reviews', 'savedPlaces', 'savedRoutes', 'stats', 'tombstones', 'trips'].sort(),
     );
     const trip = await db.get('trips', 'old');
     expect(trip!.legs).toEqual([]);

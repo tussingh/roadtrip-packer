@@ -13,6 +13,7 @@
 | Packing schedule | ✅ | Shown in the app. |
 | Reminders while the app is closed | ⚠️ | Not reliable from a web app (especially iOS). Use **Add to calendar** (.ics); your calendar app alerts you, offline. |
 | Backup export / import | ✅ | Saves/reads a file on the device. |
+| Family sync between two phones | 🌐 | Optional. Edits made offline are kept and synced when online. |
 | App updates | 🌐 | Checked when online; applied when you tap **Reload**. |
 | Live weather | ❌ | Not in the app. “Auto” weather is a seasonal guess and labelled as such. |
 

@@ -46,9 +46,19 @@ ALL_RULES (catalog/*.ts) ── for each rule × scope ───┘  when() → 
 
 ## Persistence (`src/storage/`)
 
-- Database `milestone-roadtrip`, schema **v3**. Migrations in `db.ts` are additive and idempotent; data fix-ups run through `normalize.ts`, the same normalisers used by backup import, so old data and old backups take the same path.
+- Database `milestone-roadtrip`, schema **v4**. Migrations in `db.ts` are additive and idempotent; data fix-ups run through `normalize.ts`, the same normalisers used by backup import, so old data and old backups take the same path.
 - Writes that must be consistent (replace a checklist and save its trip; save a review with its stats and inventory updates; import) use single multi-store transactions.
 - `backup.ts`: export of every store except map chunks; import validates format, version, referential integrity (checklist → trip) and duplicates **before** writing; merge keeps the newer `updatedAt`.
+
+## Family sync (`src/sync/`)
+
+Optional and off by default. Each phone keeps a full local database; `sync.ts` pulls one file from a private GitHub repository (contents API, fine-grained token), decrypts it (`crypto.ts`: gzip → AES-256-GCM, PBKDF2-SHA-256 key from a family passphrase), merges it with the backup importer in `sync` mode, then encrypts and pushes the merged result with the previous blob `sha` (optimistic concurrency; a 409 triggers pull-merge-retry).
+
+- **Per-record merge, newest `updatedAt` wins.** Every edit stamps `updatedAt`; checklist ticks are per item, so two people packing never clobber each other.
+- **Deletions propagate** through tombstones (`tombstones` store, schema v4) written in the same transaction as the delete; pruned after 180 days.
+- **Deterministic ids** for generated checklist items (`<tripId>:<ruleId>@<assignee>`), so both phones regenerating a list produce the same records; a post-merge pass removes any duplicate (trip, key) pairs and items whose trip was deleted.
+- **Device-only data** (`device` store: token, passphrase, sync position) is never exported or synced. Map regions are per device.
+- No push when neither side changed (content hash), so the repository only gets commits for real edits.
 
 ## UI (`src/features/`)
 
@@ -57,8 +67,8 @@ Mobile-first single column, bottom tab bar (Home, Pack, Maps, Inventory, More), 
 ## PWA and security
 
 - `vite-plugin-pwa` generates `sw.js` (precache ~3.3 MB: JS, CSS, fonts, MapLibre worker, glyphs, sprites, icons). `navigateFallback` serves the shell offline.
-- Content-Security-Policy (meta): `default-src 'self'`; scripts only from self; `worker-src 'self' blob:` (MapLibre); `connect-src 'self' https:` so a user-chosen map host can be reached; `object-src 'none'`; `form-action 'none'`; `referrer no-referrer`. No third-party scripts, fonts or analytics.
-- No logging of personal data; nothing personal ever leaves the device except in a backup file the user exports.
+- Content-Security-Policy (meta): `default-src 'self'`; scripts only from self; `worker-src 'self' blob:` (MapLibre); `connect-src 'self' https:` so a user-chosen map host and (if enabled) api.github.com can be reached; `object-src 'none'`; `form-action 'none'`; `referrer no-referrer`. No third-party scripts, fonts or analytics.
+- No logging of personal data; nothing personal leaves the device except in a backup file the user exports, or — only if family sync is turned on — as ciphertext sent to the user's own private GitHub repository.
 
 ## Maps subsystem (`src/features/maps/`)
 

@@ -9,6 +9,19 @@ const listeners = new Set<() => void>();
 export function bump() {
   version++;
   for (const l of listeners) l();
+  for (const l of changeListeners) l();
+}
+
+const changeListeners = new Set<() => void>();
+/** Signal a change that does not need every screen to re-read (e.g. a tick). */
+export function notifyChange() {
+  for (const l of changeListeners) l();
+}
+
+/** Notified after local data changes (used to schedule family sync). */
+export function onDataChange(l: () => void) {
+  changeListeners.add(l);
+  return () => changeListeners.delete(l);
 }
 
 function subscribe(l: () => void) {

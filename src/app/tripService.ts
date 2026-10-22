@@ -1,4 +1,5 @@
 import { nowIso, uid } from '../data/defaults';
+
 import { resolveAssumptions } from '../rules/assumptions';
 import { ENGINE_VERSION, generate } from '../rules/engine';
 import { updateStatsFromReview } from '../rules/learning';
@@ -30,7 +31,8 @@ export async function regenerateTrip(tripOrId: Trip | string, today = new Date()
   ]);
   const { items } = generate({ trip, profiles, globalAssumptions: settings.assumptions, inventory, stats, alwaysPack, today });
   const now = nowIso();
-  const merged = mergeChecklist(existing, items, trip.id, now, uid);
+  // Deterministic ids: both phones generate the same id for the same item, so family sync merges instead of duplicating.
+  const merged = mergeChecklist(existing, items, trip.id, now, (key) => `${trip.id}:${key}`);
   const saved: Trip = { ...trip, generatedAt: now, engineVersion: ENGINE_VERSION };
   await replaceChecklist(saved, merged.items);
   return { ...merged, trip: saved };

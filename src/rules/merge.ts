@@ -26,7 +26,7 @@ export function mergeChecklist(
   generated: GeneratedItem[],
   tripId: string,
   now: string,
-  newId: () => string,
+  newId: (key: string) => string,
 ): MergeResult {
   const prevByKey = new Map(existing.map((i) => [i.key, i]));
   const seen = new Set<string>();
@@ -60,7 +60,7 @@ export function mergeChecklist(
       });
     } else {
       added++;
-      out.push({ ...g, id: newId(), tripId, packed: false, unavailable: false, notes: '', stale: false, updatedAt: now });
+      out.push({ ...g, id: newId(g.key), tripId, packed: false, unavailable: false, notes: '', stale: false, updatedAt: now });
     }
   }
 

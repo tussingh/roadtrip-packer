@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { defaultSettings, nowIso } from '../data/defaults';
 import type { Settings } from '../types';
-import { getDB, SCHEMA_VERSION } from './db';
+import { getDB, SCHEMA_VERSION, type Tombstone } from './db';
 import { normalizeChecklistItem, normalizeInventory, normalizeProfile, normalizeTrip } from './normalize';
 
 export const BACKUP_FORMAT = 'milestone-roadtrip-backup';
@@ -30,6 +30,7 @@ const backupSchema = z.object({
     savedPlaces: z.array(record.extend({ lat: z.number().min(-90).max(90), lon: z.number().min(-180).max(180) })).default([]),
     savedRoutes: z.array(record).default([]),
     mapRegions: z.array(z.looseObject({})).default([]),
+    tombstones: z.array(z.object({ store: z.string(), id: z.string(), deletedAt: z.string() })).default([]),
   }),
 });
 
@@ -42,6 +43,9 @@ export async function exportBackup(): Promise<BackupFile> {
   // Map regions are listed for reference only: tile data is too large for a JSON backup.
   const regions = await db.getAll('mapRegions');
   const settings = (await db.get('meta', 'settings')) ?? defaultSettings();
+  // Deletions older than 180 days have reached every device that synced since; forget them.
+  const cutoff = new Date(Date.now() - 180 * 86400000).toISOString();
+  const tombstones = (await db.getAll('tombstones')).filter((t) => t.deletedAt >= cutoff);
   return {
     format: BACKUP_FORMAT,
     schemaVersion: SCHEMA_VERSION,
@@ -51,6 +55,7 @@ export async function exportBackup(): Promise<BackupFile> {
       settings: settings as unknown as Record<string, unknown>,
       ...(data as Record<BackupStore, { id: string }[]>),
       mapRegions: regions.map((r) => ({ id: r.id, name: r.name, bbox: r.bbox, note: 'Map data is not included in backups — download the region again.' })),
+      tombstones,
     } as unknown as BackupFile['data'],
   };
 }
@@ -72,7 +77,7 @@ export interface ImportReport {
 }
 
 /** Parse + validate without touching the database. */
-export function validateBackup(text: string): { file?: BackupFile; errors: string[] } {
+export function validateBackup(text: string, opts: { allowOrphans?: boolean } = {}): { file?: BackupFile; errors: string[] } {
   let json: unknown;
   try {
     json = JSON.parse(text);
@@ -96,7 +101,7 @@ export function validateBackup(text: string): { file?: BackupFile; errors: strin
   const errors: string[] = [];
   const tripIds = new Set(f.data.trips.map((t) => t.id));
   const orphan = f.data.checklist.filter((c) => !tripIds.has(c.tripId)).length;
-  if (orphan) errors.push(`${orphan} checklist item(s) refer to trips that are not in the file.`);
+  if (orphan && !opts.allowOrphans) errors.push(`${orphan} checklist item(s) refer to trips that are not in the file.`);
   for (const s of STORES) {
     const list = f.data[s] as { id?: string; ruleId?: string }[];
     const ids = list.map((r) => r.id ?? r.ruleId);
@@ -105,8 +110,13 @@ export function validateBackup(text: string): { file?: BackupFile; errors: strin
   return errors.length ? { errors } : { file: f, errors: [] };
 }
 
-export async function importBackup(text: string, mode: ImportMode): Promise<ImportReport> {
-  const { file, errors } = validateBackup(text);
+/**
+ * `sync: true` is used by family sync: merge newest-wins per record, apply
+ * deletions (tombstones) from both sides, tolerate and clean up checklist
+ * items whose trip was deleted on the other phone.
+ */
+export async function importBackup(text: string, mode: ImportMode, opts: { sync?: boolean } = {}): Promise<ImportReport> {
+  const { file, errors } = validateBackup(text, { allowOrphans: opts.sync });
   if (!file) return { ok: false, errors, counts: {}, skippedMapRegions: 0 };
   const d = file.data;
   const normalised = {
@@ -122,15 +132,27 @@ export async function importBackup(text: string, mode: ImportMode): Promise<Impo
   } as Record<BackupStore, { id?: string; ruleId?: string; updatedAt?: string }[]>;
 
   const db = await getDB();
-  const tx = db.transaction([...STORES, 'meta'] as (BackupStore | 'meta')[], 'readwrite');
+  const tx = db.transaction([...STORES, 'meta', 'tombstones'] as (BackupStore | 'meta' | 'tombstones')[], 'readwrite');
+  const tombStore = tx.objectStore('tombstones');
+  // Union of deletions known here and in the file.
+  const tombs = new Map<string, Tombstone>();
+  for (const t of mode === 'replace' ? [] : await tombStore.getAll()) tombs.set(`${t.store}|${t.id}`, t);
+  for (const t of d.tombstones) {
+    const k = `${t.store}|${t.id}`;
+    const prev = tombs.get(k);
+    if (!prev || prev.deletedAt < t.deletedAt) tombs.set(k, t);
+  }
+  if (mode === 'replace') await tombStore.clear();
   const counts: ImportReport['counts'] = {};
   for (const s of STORES) {
     const store = tx.objectStore(s);
     if (mode === 'replace') await store.clear();
     let n = 0;
     for (const rec of normalised[s]) {
+      const key = (rec.id ?? rec.ruleId) as string;
+      const dead = tombs.get(`${s}|${key}`);
+      if (dead && (!rec.updatedAt || rec.updatedAt <= dead.deletedAt)) continue; // deleted after this version
       if (mode === 'merge') {
-        const key = (rec.id ?? rec.ruleId) as string;
         const existing = (await store.get(key as never)) as { updatedAt?: string } | undefined;
         if (existing?.updatedAt && rec.updatedAt && existing.updatedAt > rec.updatedAt) continue; // keep newer local copy
       }
@@ -139,10 +161,38 @@ export async function importBackup(text: string, mode: ImportMode): Promise<Impo
     }
     counts[s] = n;
   }
+  // Apply deletions to local records that are not newer than the deletion.
+  for (const t of tombs.values()) {
+    await tombStore.put(t);
+    if (!(STORES as readonly string[]).includes(t.store)) continue;
+    const store = tx.objectStore(t.store as BackupStore);
+    const existing = (await store.get(t.id as never)) as { updatedAt?: string } | undefined;
+    if (existing && (!existing.updatedAt || existing.updatedAt <= t.deletedAt)) await store.delete(t.id as never);
+  }
+  if (opts.sync) {
+    // A trip deleted on one phone while the other ticked its items: drop the orphans.
+    const tripIds = new Set(await tx.objectStore('trips').getAllKeys());
+    // Same item generated independently on both phones: keep the most recently edited copy.
+    const newest = new Map<string, { id: string; updatedAt: string }>();
+    for (const i of await tx.objectStore('checklist').getAll()) {
+      const k = `${i.tripId}|${i.key}`;
+      const p = newest.get(k);
+      if (!p || i.updatedAt > p.updatedAt) newest.set(k, { id: i.id, updatedAt: i.updatedAt });
+    }
+    let c = await tx.objectStore('checklist').openCursor();
+    while (c) {
+      if (!tripIds.has(c.value.tripId) || newest.get(`${c.value.tripId}|${c.value.key}`)?.id !== c.value.id) await c.delete();
+      c = await c.continue();
+    }
+  }
   if (d.settings) {
     const current = (await tx.objectStore('meta').get('settings')) ?? defaultSettings();
     const incoming = { ...defaultSettings(), ...(d.settings as Partial<Settings>), id: 'settings' as const };
-    await tx.objectStore('meta').put(mode === 'replace' ? { ...incoming, onboarded: true } : { ...current, assumptions: { ...current.assumptions, ...incoming.assumptions } });
+    let next: Settings;
+    if (mode === 'replace') next = { ...incoming, theme: current.theme, lastBackupAt: current.lastBackupAt, onboarded: true };
+    else if (opts.sync) next = incoming.updatedAt > current.updatedAt ? { ...current, assumptions: incoming.assumptions, homeCity: incoming.homeCity, updatedAt: incoming.updatedAt } : current;
+    else next = { ...current, assumptions: { ...current.assumptions, ...incoming.assumptions } };
+    await tx.objectStore('meta').put(next);
   }
   await tx.done;
   return { ok: true, errors: [], counts, skippedMapRegions: d.mapRegions.length, fromSchemaVersion: file.schemaVersion };

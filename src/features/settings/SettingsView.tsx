@@ -10,6 +10,7 @@ import { deleteDatabase, SCHEMA_VERSION } from '../../storage/db';
 import { getSettings, saveSettings } from '../../storage/repo';
 import type { Assumptions, Settings } from '../../types';
 import { requestPersistence, storageInfo, type StorageInfo } from '../maps/regionStore';
+import { FamilySync } from './FamilySync';
 
 const mb = (b?: number) => (b === undefined ? '?' : b > 1e9 ? `${(b / 1e9).toFixed(1)} GB` : `${Math.round(b / 1e6)} MB`);
 
@@ -102,6 +103,8 @@ export function SettingsView() {
         </p>
       </section>
 
+      <FamilySync />
+
       <section className="section">
         <div className="section-head">
           <h2>Backup and restore</h2>
@@ -173,6 +176,7 @@ export function SettingsView() {
           <p>The app makes network requests only to:</p>
           <p>1. The site you installed it from, to check for app updates.</p>
           <p>2. Map catalog and region file addresses you choose in Offline Maps, only when you start a download. Nothing about your trips is sent.</p>
+          <p>3. Only if you turn on Family sync: api.github.com, to read and write one encrypted file in your private repository. The family passphrase never leaves your phones.</p>
           <p>Live traffic, weather, business hours and road closures are not available in this app.</p>
         </div>
       </section>

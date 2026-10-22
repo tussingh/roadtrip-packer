@@ -4,7 +4,7 @@ An installable, offline-first web app (PWA) that builds a personalised packing c
 
 - **No AI, no account, no server, no tracking.** Every calculation is a deterministic, inspectable rule running on your phone.
 - **Works in airplane mode** once installed. Map regions are a separate, explicit download.
-- **Everything stays on the device** (IndexedDB). Backups are JSON files you export yourself.
+- **Everything stays on the device** (IndexedDB). Backups are JSON files you export yourself. Optional family sync shares data between two phones through an end-to-end encrypted file in your own private GitHub repository.
 
 Built for one family — two adults and a toddler (20 months at the time of writing) starting from Bengaluru — but every profile, age, preference and assumption is editable.
 
@@ -18,6 +18,7 @@ Built for one family — two adults and a toddler (20 months at the time of writ
 | Inventory | Quantities, storage location, expiry, replenish flags, owner. Trips mark owned items and list only the shortfall to buy; expired stock is ignored. |
 | Learning without AI | Post-trip review: used / not needed / ran out / forgot. Ran-out consumables grow (capped), forgotten items go to top priority, items unused twice become optional — **safety-critical items are never demoted**. |
 | Offline maps | PMTiles vector maps from IndexedDB, offline place search, nearby fuel/hospitals/pharmacies/food/toilets, offline road routing on major roads, towns and main roads on a route, toddler break suggestions, saved places and routes. Clear separation between “app installed” and “map data downloaded”. |
+| Family sync | Optional: you and your partner run the app on your own phones and share one family dataset through an **encrypted file in a private GitHub repository**. Per-item merge, deletions propagate, works offline and syncs when back online. |
 | Backup | Export/import JSON (merge or replace), validated, version-aware. Delete-everything option. |
 
 ## Quick start (development)
@@ -25,7 +26,7 @@ Built for one family — two adults and a toddler (20 months at the time of writ
 ```bash
 npm ci
 npm run dev          # http://localhost:5173
-npm test             # unit + integration tests (70)
+npm test             # unit + integration tests (75)
 npm run build        # production build in dist/
 npx playwright install chromium   # once
 npm run test:e2e     # real-browser tests against dist/
@@ -46,7 +47,9 @@ Node 22 is used in CI.
 2. *Settings → Pages → Source:* **GitHub Actions**.
 3. Pushing to `main` runs `.github/workflows/ci.yml`: type-check, unit tests, build, Chromium end-to-end tests, then deploys `dist/`.
 
-The build uses relative paths, so it works at a domain root or a project path (`https://you.github.io/roadtrip-packer/`) without configuration. Any static host works; it only needs to serve files over HTTPS.
+The app will be at **`https://<your-github-username>.github.io/<repository-name>/`** — for example `https://yourname.github.io/roadtrip-packer/`. Both of you open that same address and install it. (GitHub Pages is free for public repositories; the app repository contains no personal data. Family data goes in a separate private repository — see [docs/FAMILY-SYNC.md](docs/FAMILY-SYNC.md).)
+
+The build uses relative paths, so it works at a domain root or a project path without configuration. Any static host works; it only needs to serve files over HTTPS.
 
 ## Offline maps need data you publish
 
@@ -59,6 +62,7 @@ The app ships **no map data** (that would be large and is licensed separately). 
 - [docs/OFFLINE-CAPABILITIES.md](docs/OFFLINE-CAPABILITIES.md) — what works offline, online-only, and after manual setup
 - [docs/RULES.md](docs/RULES.md) — how quantities are calculated and how to change rules
 - [docs/MAP-DATA.md](docs/MAP-DATA.md) — building, hosting and licensing offline regions; storage sizes
+- [docs/FAMILY-SYNC.md](docs/FAMILY-SYNC.md) — sharing data between two phones via a private GitHub repository
 - [docs/BACKUP.md](docs/BACKUP.md) — backup, restore, migration
 - [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
 - [docs/LICENSES.md](docs/LICENSES.md) — third-party licences and attribution
@@ -74,6 +78,7 @@ src/
   features/maps/  PMTiles-in-IndexedDB source, downloader, places index, routing (worker), map UI
   rules/          deterministic packing engine, catalogue, assumptions, merge, learning, schedule
   storage/        IndexedDB schema + migrations, repositories, backup/import, normalisers
+  sync/           optional family sync: encryption, GitHub contents API, merge
   data/           defaults, labels, starter family
   types/          data model
 scripts/          map-data builders (Overpass → places index / road graph), manifest, icons, licences

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { showToast, useQuery } from '../../app/store';
+import { notifyChange, showToast, useQuery } from '../../app/store';
 import { Icon } from '../../components/Icon';
 import { Bar, Empty, Segmented, Sheet, TopBar } from '../../components/ui';
 import { CATEGORY_LABEL, CATEGORY_ORDER, LOCATION_LABEL, STAGE_ORDER, nowIso } from '../../data/defaults';
@@ -61,10 +61,22 @@ export function ChecklistView({ tripId }: { tripId: string }) {
   }, [items]);
 
   useEffect(() => {
-    if (data?.items && loadedFor.current !== tripId) {
+    if (!data?.items) return;
+    if (loadedFor.current !== tripId) {
       loadedFor.current = tripId;
       setItems(data.items);
+      return;
     }
+    // Fresh data arrived (e.g. family sync): take it, but keep any local edit that is newer.
+    setItems((local) => {
+      const mine = new Map(local.map((i) => [i.id, i]));
+      const merged = data.items.map((f) => {
+        const l = mine.get(f.id);
+        return l && l.updatedAt > f.updatedAt ? l : f;
+      });
+      const fetched = new Set(data.items.map((i) => i.id));
+      return [...merged, ...local.filter((l) => !fetched.has(l.id) && Date.now() - Date.parse(l.updatedAt) < 5000)];
+    });
   }, [data, tripId]);
 
   useEffect(() => {
@@ -91,6 +103,7 @@ export function ChecklistView({ tripId }: { tripId: string }) {
       itemsRef.current = itemsRef.current.map((p) => byId.get(p.id) ?? p);
       setItems((prev) => prev.map((p) => byId.get(p.id) ?? p));
       await putChecklistItems(changed);
+      notifyChange();
       pushUndo({ label, before, added: [], deleted: [] });
       if (!opts.silent) showToast(label, 'Undo', () => void runUndo());
     },
@@ -102,9 +115,14 @@ export function ChecklistView({ tripId }: { tripId: string }) {
     const e = undo.current.pop();
     setUndoCount(undo.current.length);
     if (!e) return;
+    // Restored versions get a fresh timestamp so they win over older copies on the other phone.
+    const now = nowIso();
+    e.before = e.before.map((b) => ({ ...b, updatedAt: now }));
+    e.deleted = e.deleted.map((b) => ({ ...b, updatedAt: now }));
     if (e.before.length) await putChecklistItems(e.before);
     for (const id of e.added) await deleteChecklistItem(id);
     if (e.deleted.length) await putChecklistItems(e.deleted);
+    notifyChange();
     setItems((prev) => {
       const byId = new Map(e.before.map((b) => [b.id, b]));
       const next = prev.filter((p) => !e.added.includes(p.id)).map((p) => byId.get(p.id) ?? p);
@@ -280,6 +298,7 @@ export function ChecklistView({ tripId }: { tripId: string }) {
           onChange={(next) => void apply([next], `Updated ${next.name}`, { silent: true })}
           onDelete={async (i) => {
             await deleteChecklistItem(i.id);
+            notifyChange();
             setItems((prev) => prev.filter((p) => p.id !== i.id));
             pushUndo({ label: `Deleted ${i.name}`, before: [], added: [], deleted: [i] });
             setOpen(undefined);
@@ -294,6 +313,7 @@ export function ChecklistView({ tripId }: { tripId: string }) {
           onClose={() => setAdding(false)}
           onAdd={async (item, always) => {
             await putChecklistItems([item]);
+            notifyChange();
             if (always) await saveAlwaysPack(always);
             setItems((prev) => [...prev, item]);
             pushUndo({ label: `Added ${item.name}`, before: [], added: [item.id], deleted: [] });

@@ -6,6 +6,7 @@ import { localDateIso } from '../../data/defaults';
 import { buildSchedule, progressOf } from '../../rules/progress';
 import { getChecklist, getSettings, listProfiles, listTrips } from '../../storage/repo';
 import type { Trip } from '../../types';
+import { SyncBadge } from '../settings/FamilySync';
 import { countdown, dateRange, destLabel, isUpcoming, pickNextTrip, tripTitle } from '../trips/tripUtils';
 
 async function load() {
@@ -67,6 +68,7 @@ export function Dashboard() {
         </a>
       </header>
 
+      <SyncBadge />
       {next ? (
         <>
           <TripSign trip={next} pct={prog.pct} travellers={next.travellerIds.length} />

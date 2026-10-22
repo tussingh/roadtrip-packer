@@ -7,6 +7,11 @@ $ npm run typecheck
 tsc -p .   # no errors
 
 $ npm test
+ ✓ tests/integration/sync.test.ts > encryption > round-trips, compresses, and rejects a wrong passphrase
+ ✓ tests/integration/sync.test.ts > family sync between two phones > shares trips and ticks both ways, propagates deletions, and never uploads readable data
+ ✓ tests/integration/sync.test.ts > family sync between two phones > merges concurrent edits made offline on both phones
+ ✓ tests/integration/sync.test.ts > family sync between two phones > deleting a trip on one phone removes it and its items on the other
+ ✓ tests/integration/sync.test.ts > family sync between two phones > refuses public repositories, bad tokens and a wrong passphrase
  ✓ tests/integration/maps.test.ts > incremental SHA-256 > matches Node crypto across arbitrary chunk boundaries
  ✓ tests/integration/maps.test.ts > Scenario G — offline map coverage > downloads, survives interruption, verifies, then serves map, search and routes with no network
  ✓ tests/integration/maps.test.ts > Scenario G — offline map coverage > fails gracefully outside coverage and on disconnected or one-way roads
@@ -15,7 +20,7 @@ $ npm test
  ✓ tests/integration/maps.test.ts > Scenario G — offline map coverage > refuses to start downloads while offline and validates formats
  ✓ tests/integration/maps.test.ts > Scenario G — offline map coverage > rejects malformed catalogs with a readable error
  ✓ tests/integration/persistence.test.ts > Scenario F — offline restart keeps trips, inventory and progress > survives closing and reopening with the network unavailable
- ✓ tests/integration/persistence.test.ts > schema migrations > upgrades a version-1 database without losing trips or checklist items
+ ✓ tests/integration/persistence.test.ts > schema migrations > upgrades a version-1 database to the current version without losing trips or checklist items
  ✓ tests/integration/persistence.test.ts > backup and restore > round-trips the complete local dataset
  ✓ tests/integration/persistence.test.ts > backup and restore > rejects malformed, foreign, future-version and inconsistent files without writing
  ✓ tests/integration/persistence.test.ts > backup and restore > merge keeps the newer local copy of a record
@@ -77,8 +82,8 @@ $ npm test
  ✓ tests/unit/engine.rules.test.ts > progress, readiness and schedule > is not ready while safety items remain
  ✓ tests/unit/engine.rules.test.ts > progress, readiness and schedule > builds a dated schedule and a valid iCalendar file
  ✓ tests/unit/engine.rules.test.ts > progress, readiness and schedule > clamps reminders that would fall in the past
- Test Files  4 passed (4)
-      Tests  70 passed (70)
+ Test Files  5 passed (5)
+      Tests  75 passed (75)
 
 $ npm run build
 ✓ built in 612ms
@@ -102,6 +107,7 @@ ok 4 - no unexpected console errors
 | `tests/unit/engine.rules.test.ts` | Distance vs duration independence; km never changes clothing; child age brackets, under-6-month sunscreen, toilet-trained switch, car-seat safety text; weather and activity modules; inventory (owned, shortfall, expiry); learning (ran out cap, forgotten, not-needed, safety never demoted); assumption clamping; determinism; date boundaries (same-day trips, nights > days, zero km, explicit legs, month-end ages); merge keeps user work, no duplicate keys; readiness; schedule and RFC 5545 calendar output. |
 | `tests/integration/persistence.test.ts` | **Scenario F** at the storage level (close + reopen with network failing, regenerate offline); v1 → v3 database migration; backup round trip; rejection of malformed / foreign / future-version / orphaned / duplicate / out-of-range files without writing; merge keeps newer records; importing an old-format backup. |
 | `tests/integration/maps.test.ts` | Streaming SHA-256 vs Node crypto; **Scenario G**: resumable range download after a dropped connection, verification, offline PMTiles reads from IndexedDB, places search/nearby, road routing, towns and breaks; graceful failures (outside coverage, unreachable island, no road nearby, one-way respected); checksum mismatch cleanup; hosts without Range; file import; If-Range restart; refusing downloads offline; malformed catalogs. |
+| `tests/integration/sync.test.ts` | Family sync against an in-memory GitHub API: encryption round trip and wrong passphrase; second phone joins without duplicating the family; ticks made on both phones while apart both survive; deletions propagate; 409 conflict → pull, merge, retry; regenerating on both phones creates no duplicates; deleted trip removed with its items; public repositories, bad tokens and short passphrases refused; no commit when nothing changed. |
 | `tests/e2e/run-e2e.mjs` | Real Chromium against the production build: service worker install and control; **Scenario F** in the UI with a true airplane-mode reload; **Scenario G** in the UI: catalog → download with checksum verification → offline reload → map rendered from IndexedDB with precached glyphs → offline search → offline route with breaks → outside-coverage message; no unexpected console errors. |
 
 Map tests use synthetic, fictional data generated in `tests/fixtures/` — it is never shipped or presented as a real map.

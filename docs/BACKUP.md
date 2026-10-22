@@ -33,11 +33,15 @@ If any check fails, nothing changes and the reasons are shown. Restores run in a
 
 ## Older backups and app upgrades
 
-The database has a schema version (currently 3). Upgrades run additive migrations when the app opens: new stores are created and existing records are filled with safe defaults, never deleted. Backups from older versions go through the same normalisers, so a v1 backup restores into a v3 app (tested in `tests/integration/persistence.test.ts`).
+The database has a schema version (currently 4). Upgrades run additive migrations when the app opens: new stores are created and existing records are filled with safe defaults, never deleted. Backups from older versions go through the same normalisers, so a v1 backup restores into a v3 app (tested in `tests/integration/persistence.test.ts`).
 
 ## Delete all data
 
 *Settings and backup → Delete all data on this device* (type DELETE to confirm) removes the whole database — trips, checklists, profiles, inventory, history, settings and map regions — and reloads the app with a fresh starter family. It cannot be undone without a backup. The cached app files remain until you uninstall the app or clear site data in the browser.
+
+## Family sync is also an off-phone copy
+
+With family sync on, the private repository holds an encrypted copy of everything, with full history. If a phone is lost, install the app on a new phone, set up sync with the same passphrase and choose “Use the shared family data”. Keep exporting backups too — they do not depend on the passphrase.
 
 ## Reducing the risk of data loss
 

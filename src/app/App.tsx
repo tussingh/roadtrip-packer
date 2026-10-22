@@ -16,6 +16,7 @@ import { TripWizard } from '../features/trips/TripWizard';
 import { TripsList } from '../features/trips/TripsList';
 import { PackRedirect } from '../features/trips/PackRedirect';
 import { ensureSeeded, getSettings } from '../storage/repo';
+import { startAutoSync } from '../sync/sync';
 import { bump, clearToast, useOnline, useQuery, useRoute, useToast } from './store';
 
 const MapsView = lazy(() => import('../features/maps/MapsView'));
@@ -119,6 +120,7 @@ export function App() {
       .then(() => {
         bump();
         setReady(true);
+        startAutoSync();
       })
       .catch((e: unknown) => setInitError(e instanceof Error ? e.message : String(e)));
   }, []);

@@ -21,9 +21,10 @@ import { normalizeChecklistItem, normalizeTrip } from './normalize';
  *  v2  reviews, stats, alwaysPack; trips gain legs/assumptionOverrides/stops
  *  v3  offline maps: mapRegions, mapChunks, savedPlaces, savedRoutes;
  *      checklist items gain isCheck/safetyCritical/conditions
+ *  v4  family sync: tombstones (deletions to propagate), device (this phone's sync settings)
  * Each step is idempotent and only adds; nothing is ever dropped.
  */
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 export const DEFAULT_DB_NAME = 'milestone-roadtrip';
 
 export interface MapChunk {
@@ -31,6 +32,19 @@ export interface MapChunk {
   kind: MapAssetKind;
   index: number;
   data: ArrayBuffer;
+}
+
+/** A deletion remembered so it can propagate to the other phone during sync. */
+export interface Tombstone {
+  store: string;
+  id: string;
+  deletedAt: string;
+}
+
+/** Per-device record (never backed up or synced). */
+export interface DeviceRecord {
+  id: string;
+  [k: string]: unknown;
 }
 
 export interface MilestoneDB extends DBSchema {
@@ -46,6 +60,8 @@ export interface MilestoneDB extends DBSchema {
   mapChunks: { key: [string, MapAssetKind, number]; value: MapChunk; indexes: { asset: [string, MapAssetKind] } };
   savedPlaces: { key: string; value: SavedPlace };
   savedRoutes: { key: string; value: SavedRoute };
+  tombstones: { key: [string, string]; value: Tombstone };
+  device: { key: string; value: DeviceRecord };
 }
 
 export type DB = IDBPDatabase<MilestoneDB>;
@@ -95,6 +111,10 @@ export function upgradeSteps(db: IDBPDatabase<MilestoneDB>, oldVersion: number, 
         })(),
       );
     }
+  }
+  if (oldVersion < 4) {
+    db.createObjectStore('tombstones', { keyPath: ['store', 'id'] });
+    db.createObjectStore('device', { keyPath: 'id' });
   }
   return work;
 }

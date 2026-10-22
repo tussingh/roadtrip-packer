@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useQuery } from '../../app/store';
+import { notifyChange, useQuery } from '../../app/store';
 import { Icon } from '../../components/Icon';
 import { Milestone } from '../../components/Milestone';
 import { Empty, Notice, TopBar } from '../../components/ui';
@@ -32,6 +32,7 @@ export function ReadinessView({ tripId }: { tripId: string }) {
     const next = { ...i, packed: !i.packed, updatedAt: nowIso() };
     setItems((prev) => prev.map((p) => (p.id === i.id ? next : p)));
     await putChecklistItems([next]);
+    notifyChange();
   };
 
   const verify = items.filter((i) => i.stage === 'verify' && !i.stale && !i.unavailable);

@@ -11,7 +11,19 @@ import type {
   Trip,
   TripReview,
 } from '../types';
-import { getDB } from './db';
+import { getDB, type Tombstone } from './db';
+
+/** Remember deletions so family sync removes the record on the other phone too. */
+function tomb(store: string, id: string): Tombstone {
+  return { store, id, deletedAt: nowIso() };
+}
+async function deleteWithTombstone(store: 'profiles' | 'inventory' | 'alwaysPack' | 'savedPlaces' | 'savedRoutes' | 'checklist', id: string) {
+  const db = await getDB();
+  const tx = db.transaction([store, 'tombstones'], 'readwrite');
+  await tx.objectStore(store).delete(id);
+  await tx.objectStore('tombstones').put(tomb(store, id));
+  await tx.done;
+}
 
 /* ---------------- settings & seeding ---------------- */
 
@@ -54,7 +66,7 @@ export async function saveProfile(p: TravellerProfile): Promise<void> {
 }
 
 export async function deleteProfile(id: string): Promise<void> {
-  await (await getDB()).delete('profiles', id);
+  await deleteWithTombstone('profiles', id);
 }
 
 /* ---------------- trips & checklists ---------------- */
@@ -74,10 +86,18 @@ export async function saveTrip(t: Trip): Promise<void> {
 
 export async function deleteTrip(id: string): Promise<void> {
   const db = await getDB();
-  const tx = db.transaction(['trips', 'checklist', 'reviews'], 'readwrite');
+  const tx = db.transaction(['trips', 'checklist', 'reviews', 'tombstones'], 'readwrite');
+  const tombs = tx.objectStore('tombstones');
   await tx.objectStore('trips').delete(id);
-  for (const key of await tx.objectStore('checklist').index('tripId').getAllKeys(id)) await tx.objectStore('checklist').delete(key);
-  for (const key of await tx.objectStore('reviews').index('tripId').getAllKeys(id)) await tx.objectStore('reviews').delete(key);
+  await tombs.put(tomb('trips', id));
+  for (const key of await tx.objectStore('checklist').index('tripId').getAllKeys(id)) {
+    await tx.objectStore('checklist').delete(key);
+    await tombs.put(tomb('checklist', key));
+  }
+  for (const key of await tx.objectStore('reviews').index('tripId').getAllKeys(id)) {
+    await tx.objectStore('reviews').delete(key);
+    await tombs.put(tomb('reviews', key));
+  }
   await tx.done;
 }
 
@@ -88,23 +108,33 @@ export async function getChecklist(tripId: string): Promise<ChecklistItem[]> {
 
 export async function putChecklistItems(items: ChecklistItem[]): Promise<void> {
   const db = await getDB();
-  const tx = db.transaction('checklist', 'readwrite');
-  for (const i of items) await tx.store.put(i);
+  const tx = db.transaction(['checklist', 'tombstones'], 'readwrite');
+  for (const i of items) {
+    await tx.objectStore('checklist').put(i);
+    await tx.objectStore('tombstones').delete(['checklist', i.id]); // restored by undo
+  }
   await tx.done;
 }
 
 export async function deleteChecklistItem(id: string): Promise<void> {
-  await (await getDB()).delete('checklist', id);
+  await deleteWithTombstone('checklist', id);
 }
 
 /** Atomically replace a trip's checklist and save the trip. */
 export async function replaceChecklist(trip: Trip, items: ChecklistItem[]): Promise<void> {
   const db = await getDB();
-  const tx = db.transaction(['trips', 'checklist'], 'readwrite');
+  const tx = db.transaction(['trips', 'checklist', 'tombstones'], 'readwrite');
   const store = tx.objectStore('checklist');
   const keep = new Set(items.map((i) => i.id));
-  for (const key of await store.index('tripId').getAllKeys(trip.id)) if (!keep.has(key)) await store.delete(key);
-  for (const i of items) await store.put(i);
+  for (const key of await store.index('tripId').getAllKeys(trip.id)) {
+    if (keep.has(key)) continue;
+    await store.delete(key);
+    await tx.objectStore('tombstones').put(tomb('checklist', key));
+  }
+  for (const i of items) {
+    await store.put(i);
+    await tx.objectStore('tombstones').delete(['checklist', i.id]);
+  }
   await tx.objectStore('trips').put({ ...trip, updatedAt: nowIso() });
   await tx.done;
 }
@@ -117,11 +147,15 @@ export async function listInventory(): Promise<InventoryItem[]> {
 }
 
 export async function saveInventoryItem(i: InventoryItem): Promise<void> {
-  await (await getDB()).put('inventory', { ...i, updatedAt: nowIso() });
+  const db = await getDB();
+  const tx = db.transaction(['inventory', 'tombstones'], 'readwrite');
+  await tx.objectStore('inventory').put({ ...i, updatedAt: nowIso() });
+  await tx.objectStore('tombstones').delete(['inventory', i.id]);
+  await tx.done;
 }
 
 export async function deleteInventoryItem(id: string): Promise<void> {
-  await (await getDB()).delete('inventory', id);
+  await deleteWithTombstone('inventory', id);
 }
 
 /* ---------------- history & learning ---------------- */
@@ -136,7 +170,11 @@ export async function listStats(): Promise<ItemStats[]> {
 }
 
 export async function clearStats(): Promise<void> {
-  await (await getDB()).clear('stats');
+  const db = await getDB();
+  const tx = db.transaction(['stats', 'tombstones'], 'readwrite');
+  for (const key of await tx.objectStore('stats').getAllKeys()) await tx.objectStore('tombstones').put(tomb('stats', key));
+  await tx.objectStore('stats').clear();
+  await tx.done;
 }
 
 export async function saveReviewAndStats(review: TripReview, stats: ItemStats[], trip: Trip, inventoryUpdates: InventoryItem[]): Promise<void> {
@@ -158,7 +196,7 @@ export async function saveAlwaysPack(i: AlwaysPackItem): Promise<void> {
 }
 
 export async function deleteAlwaysPack(id: string): Promise<void> {
-  await (await getDB()).delete('alwaysPack', id);
+  await deleteWithTombstone('alwaysPack', id);
 }
 
 /* ---------------- saved places / routes ---------------- */
@@ -170,7 +208,7 @@ export async function saveSavedPlace(p: SavedPlace): Promise<void> {
   await (await getDB()).put('savedPlaces', { ...p, updatedAt: nowIso() });
 }
 export async function deleteSavedPlace(id: string): Promise<void> {
-  await (await getDB()).delete('savedPlaces', id);
+  await deleteWithTombstone('savedPlaces', id);
 }
 export async function listSavedRoutes(): Promise<SavedRoute[]> {
   return (await getDB()).getAll('savedRoutes');
@@ -179,5 +217,5 @@ export async function saveSavedRoute(r: SavedRoute): Promise<void> {
   await (await getDB()).put('savedRoutes', r);
 }
 export async function deleteSavedRoute(id: string): Promise<void> {
-  await (await getDB()).delete('savedRoutes', id);
+  await deleteWithTombstone('savedRoutes', id);
 }
