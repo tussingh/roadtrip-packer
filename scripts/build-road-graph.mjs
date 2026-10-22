@@ -9,8 +9,12 @@ import { buildGraph, waysFromGeoJSON, waysFromOverpass } from './lib/graph-build
 const args = parseArgs();
 const input = args.in ?? die('--in is required');
 const out = args.out ?? die('--out is required');
-const json = JSON.parse(await readFile(input, 'utf8'));
-const ways = json.type === 'FeatureCollection' ? waysFromGeoJSON(json) : waysFromOverpass(json);
+// Several inputs (e.g. a large area fetched in pieces) can be given comma-separated.
+const ways = [];
+for (const file of input.split(',')) {
+  const json = JSON.parse(await readFile(file.trim(), 'utf8'));
+  ways.push(...(json.type === 'FeatureCollection' ? waysFromGeoJSON(json) : waysFromOverpass(json)));
+}
 if (ways.length === 0) die('no road ways found in input');
 const bytes = buildGraph(ways, {
   bbox: parseBBox(args.bbox),

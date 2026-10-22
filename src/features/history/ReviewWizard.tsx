@@ -81,9 +81,9 @@ export function ReviewWizard({ tripId }: { tripId: string }) {
                 <div style={{ fontWeight: 700 }}>
                   {i.name} <span className="muted small">{nameOf(i.assigneeId, data.profiles)}</span>
                 </div>
-                <div className="segmented" role="group" aria-label={`Outcome for ${i.name}`} style={{ marginTop: 6 }}>
+                <div className="segmented segmented--compact" role="group" aria-label={`Outcome for ${i.name}`} style={{ marginTop: 6 }}>
                   {OUTCOMES.map((o) => (
-                    <button key={o.value} type="button" className="btn--small" aria-pressed={outcomes[i.id] === o.value} onClick={() => setOutcomes((s) => ({ ...s, [i.id]: s[i.id] === o.value ? undefined : o.value }))}>
+                    <button key={o.value} type="button" aria-pressed={outcomes[i.id] === o.value} onClick={() => setOutcomes((s) => ({ ...s, [i.id]: s[i.id] === o.value ? undefined : o.value }))}>
                       {o.label}
                     </button>
                   ))}

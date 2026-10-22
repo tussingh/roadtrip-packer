@@ -9,8 +9,12 @@ import { buildPoiFile, poisFromGeoJSON, poisFromOverpass } from './lib/poi-build
 const args = parseArgs();
 const input = args.in ?? die('--in is required');
 const out = args.out ?? die('--out is required');
-const json = JSON.parse(await readFile(input, 'utf8'));
-const pois = json.type === 'FeatureCollection' ? poisFromGeoJSON(json) : poisFromOverpass(json);
+// Several inputs (e.g. a large area fetched in pieces) can be given comma-separated.
+const pois = [];
+for (const file of input.split(',')) {
+  const json = JSON.parse(await readFile(file.trim(), 'utf8'));
+  pois.push(...(json.type === 'FeatureCollection' ? poisFromGeoJSON(json) : poisFromOverpass(json)));
+}
 const file = buildPoiFile(pois, { bbox: parseBBox(args.bbox), generated: new Date().toISOString().slice(0, 10) });
 await mkdir(dirname(out), { recursive: true });
 const text = JSON.stringify(file);
