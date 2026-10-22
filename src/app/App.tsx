@@ -166,7 +166,7 @@ export function App() {
           ))}
         </ul>
       </nav>
-      {toast && <Toast key={toast.id} message={toast.message} action={toast.action} onAction={toast.onAction} onDone={() => clearToast(toast.id)} />}
+      {toast && <Toast key={toast.id} message={toast.message} action={toast.action} onAction={toast.onAction} ms={toast.action === 'Update now' ? 60000 : 4500} onDone={() => clearToast(toast.id)} />}
     </div>
   );
 }
