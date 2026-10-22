@@ -25,10 +25,11 @@ export async function buildRoutePlan(points: { origin: GeoPoint; destination: Ge
 }
 
 /** Fetch food, fuel, toilets, hospitals and sights along the chosen route + around the destination. */
-export async function addPlaces(plan: TripPlan, f: F = fetch): Promise<TripPlan> {
+export async function addPlaces(plan: TripPlan, f: F = fetch, onProgress?: (msg: string) => void): Promise<TripPlan> {
   const opt = plan.options[plan.chosen] ?? plan.options[0];
   const next: TripPlan = { ...plan };
-  const [along, near] = await Promise.allSettled([fetchPlacesAlong(opt.geometry, f), fetchSightsNear(plan.destination, 20000, f)]);
+  const along = await Promise.allSettled([fetchPlacesAlong(opt.geometry, f, onProgress)]).then((r) => r[0]);
+  const near = await Promise.allSettled([fetchSightsNear(plan.destination, 20000, f)]).then((r) => r[0]);
   if (along.status === 'fulfilled') {
     next.places = locatePlaces(opt, along.value);
     next.placesFetchedAt = new Date().toISOString();
@@ -77,4 +78,31 @@ export function applyPlanToTrip(trip: Trip, plan: TripPlan): Trip {
     next.resupply = 'limited';
   }
   return next;
+}
+
+/* One places lookup per trip at a time, shared between the wizard and the route screen. */
+const inflight = new Map<string, { promise: Promise<void>; message: string }>();
+const listeners = new Set<() => void>();
+export function placesJob(tripId: string) {
+  return inflight.get(tripId);
+}
+export function onPlacesJob(l: () => void) {
+  listeners.add(l);
+  return () => void listeners.delete(l);
+}
+export function runPlacesJob(tripId: string, work: (progress: (msg: string) => void) => Promise<void>): Promise<void> {
+  const existing = inflight.get(tripId);
+  if (existing) return existing.promise;
+  const job = { message: 'Finding restaurants, fuel, hospitals and sights along the route…', promise: Promise.resolve() };
+  const notify = () => listeners.forEach((l) => l());
+  job.promise = work((msg) => {
+    job.message = msg;
+    notify();
+  }).finally(() => {
+    inflight.delete(tripId);
+    notify();
+  });
+  inflight.set(tripId, job);
+  notify();
+  return job.promise;
 }

@@ -10,8 +10,8 @@ import type { PlannedPlace, Trip, TripPlan } from '../../types';
 import { tripTitle } from '../trips/tripUtils';
 import { departureAdvice, fmtClock, fuelCost, fuelGaps, googleDirectionsUrl, googlePlaceUrl, hospitalsAlong, planStops, rankDestinationSights, restaurantsEvery, sightsAlong } from './analyze';
 import type { RoutePin } from './OnlineMap';
-import { addPlaces, applyPlanToTrip } from './planner';
-import { fmtHours } from './RouteStep';
+import { applyPlanToTrip, onPlacesJob, placesJob } from './planner';
+import { fetchPlacesInBackground, fmtHours } from './RouteStep';
 import { OFM_ATTRIBUTION, saveRouteMap, type SaveProgress } from './offlineTiles';
 
 const OnlineMap = lazy(() => import('./OnlineMap'));
@@ -53,6 +53,9 @@ export function TripPlanView({ tripId }: { tripId: string }) {
   const online = useOnline();
   const [busy, setBusy] = useState('');
   const [progress, setProgress] = useState<SaveProgress>();
+  const [, setJobTick] = useState(0);
+  useEffect(() => onPlacesJob(() => setJobTick((n) => n + 1)), []);
+  const job = placesJob(tripId);
   const [dark, setDark] = useState(() => document.documentElement.dataset.theme === 'dark');
   useEffect(() => {
     const obs = new MutationObserver(() => setDark(document.documentElement.dataset.theme === 'dark'));
@@ -81,6 +84,10 @@ export function TripPlanView({ tripId }: { tripId: string }) {
       fc: plan.forecast ? summariseForecast(plan.forecast, trip.startDate, trip.endDate) : undefined,
     };
   }, [trip, plan, opt, a, hasChild]);
+
+  useEffect(() => {
+    if (trip && plan && !plan.places && !plan.placesError && online && !placesJob(trip.id)) void fetchPlacesInBackground(trip.id);
+  }, [trip?.id, plan?.places, plan?.placesError, online]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pins = useMemo<RoutePin[]>(() => {
     if (!plan || !derived) return [];
@@ -115,22 +122,15 @@ export function TripPlanView({ tripId }: { tripId: string }) {
     if (msg) showToast(msg);
   };
 
-  const loadPlaces = async (p: TripPlan = plan) => {
-    setBusy('places');
-    try {
-      const withPlaces = await addPlaces(p);
-      await persist(applyPlanToTrip(trip, withPlaces), withPlaces.placesError ? `Could not load places: ${withPlaces.placesError}` : `Found ${withPlaces.places?.length ?? 0} places along the route.`);
-    } catch (e) {
-      showToast(e instanceof Error ? e.message : String(e));
-    } finally {
-      setBusy('');
-    }
+  const loadPlaces = async (fresh = false) => {
+    if (fresh) await saveTrip({ ...trip, plan: { ...plan, places: undefined, placesFetchedAt: undefined, placesError: undefined } });
+    await fetchPlacesInBackground(trip.id);
   };
 
   const chooseRoute = async (i: number) => {
-    const p: TripPlan = { ...plan, chosen: i, places: undefined, placesFetchedAt: undefined, offlineMap: undefined };
+    const p: TripPlan = { ...plan, chosen: i, places: undefined, placesFetchedAt: undefined, placesError: undefined, offlineMap: undefined };
     await persist(applyPlanToTrip(trip, p));
-    if (online) void loadPlaces(p);
+    if (online) void loadPlaces();
   };
 
   const saveOffline = async () => {
@@ -277,8 +277,8 @@ export function TripPlanView({ tripId }: { tripId: string }) {
 
       {!places && (
         <Notice kind={plan.placesError ? 'warn' : 'info'}>
-          <p>{busy === 'places' ? 'Finding restaurants, fuel, toilets, hospitals and sights along the route… (up to a minute)' : plan.placesError ? `Places could not be loaded: ${plan.placesError}` : 'Restaurants, stops and sights have not been loaded yet.'}</p>
-          {busy !== 'places' && (
+          <p>{job ? job.message : plan.placesError ? `Places could not be loaded: ${plan.placesError}` : 'Restaurants, stops and sights have not been loaded yet.'}</p>
+          {!job && (
             <button type="button" className="btn btn--small" disabled={!online} onClick={() => void loadPlaces()}>
               <Icon name="refresh" size={16} /> {online ? 'Find stops and restaurants' : 'Needs internet'}
             </button>
@@ -471,8 +471,9 @@ export function TripPlanView({ tripId }: { tripId: string }) {
         <p className="muted small">
           Route: OSRM / OpenStreetMap · Places © OpenStreetMap contributors · {plan.placesFetchedAt ? `places updated ${new Date(plan.placesFetchedAt).toLocaleDateString('en-IN')}` : `route updated ${new Date(plan.fetchedAt).toLocaleDateString('en-IN')}`}. Only the start, stops and destination are sent to these free services — never your family details.
         </p>
+        {places && job && <p className="small">{job.message}</p>}
         {places && (
-          <button type="button" className="btn btn--small" disabled={!online || busy === 'places'} onClick={() => void loadPlaces()}>
+          <button type="button" className="btn btn--small" disabled={!online || Boolean(job)} onClick={() => void loadPlaces(true)}>
             <Icon name="refresh" size={16} /> Refresh places
           </button>
         )}

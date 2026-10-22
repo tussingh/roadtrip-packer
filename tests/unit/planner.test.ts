@@ -167,3 +167,31 @@ describe('planning logic', () => {
     expect(u.searchParams.get('travelmode')).toBe('driving');
   });
 });
+
+describe('places fallback when Overpass is overloaded', () => {
+  it('falls back to Nominatim box searches and still finds restaurants and fuel', async () => {
+    const { fetchPlacesAlong, setNominatimGap } = await import('../../src/features/planner/services');
+    setNominatimGap(0);
+    const seen: string[] = [];
+    const { f } = fakeNet({
+      'overpass-api.de': () => new Response('busy', { status: 502 }),
+      'maps.mail.ru': () => new Response('busy', { status: 504 }),
+      'nominatim.openstreetmap.org': (u) => {
+        const q = u.searchParams.get('q')!;
+        seen.push(q);
+        const [w, n, , s] = u.searchParams.get('viewbox')!.split(',').map(Number);
+        const lat = (n + s) / 2;
+        if (q === 'restaurant') return [{ osm_type: 'node', osm_id: Math.round(lat * 1000), lat: String(lat), lon: String(w + 0.015), name: `Dhaba ${lat.toFixed(2)}`, category: 'amenity', type: 'restaurant', extratags: { cuisine: 'indian' } }];
+        if (q === 'fuel') return [{ osm_type: 'node', osm_id: Math.round(lat * 1000) + 1, lat: String(lat), lon: String(w + 0.015), name: 'Indian Oil', category: 'amenity', type: 'fuel', extratags: null }];
+        return [];
+      },
+    });
+    const msgs: string[] = [];
+    const places = await fetchPlacesAlong(coords, f, (m) => msgs.push(m));
+    expect(places.filter((p) => p.kind === 'restaurant').length).toBeGreaterThanOrEqual(10);
+    expect(places.some((p) => p.kind === 'fuel')).toBe(true);
+    expect(places.find((p) => p.kind === 'restaurant')!.tags.cuisine).toBe('indian');
+    expect(seen).toContain('waterfall');
+    expect(msgs[0]).toMatch(/backup/);
+  });
+});

@@ -5,7 +5,7 @@
  *
  *  - Place search: Photon (komoot), Nominatim fallback — OpenStreetMap data
  *  - Routing: OSRM (FOSSGIS servers, project-osrm demo fallback)
- *  - Places along a route: Overpass API (OpenStreetMap)
+ *  - Places along a route: Overpass API (two mirrors raced), Nominatim fallback
  *  - Weather forecast and elevation: Open-Meteo
  */
 import type { DayForecast, GeoPoint, PlannedPlace, RouteOption } from '../../types';
@@ -199,7 +199,7 @@ export function labelOptions(opts: RouteOption[]): RouteOption[] {
 
 /* ---------------- places along the route ---------------- */
 
-const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter'];
+const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://maps.mail.ru/osm/tools/overpass/api/interpreter'];
 
 export const PLACE_KINDS = {
   food: ['restaurant', 'fast_food', 'cafe'],
@@ -255,22 +255,87 @@ function toPlaces(els: OverpassEl[]): Omit<PlannedPlace, 'alongKm' | 'offKm'>[] 
   return out;
 }
 
-async function overpass(query: string, f: F): Promise<OverpassEl[]> {
-  let last: unknown;
-  for (const url of OVERPASS) {
-    try {
-      const j = await getJson<{ elements: OverpassEl[] }>(url, f, { method: 'POST', body: 'data=' + encodeURIComponent(query), headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }, 90000);
-      return j.elements ?? [];
-    } catch (e) {
-      last = e;
-      if (e instanceof ServiceError && e.offline) throw e;
+/** Ask both public Overpass servers at once and use whichever answers first. */
+async function overpass(query: string, f: F, timeoutMs = 35000): Promise<OverpassEl[]> {
+  const body = 'data=' + encodeURIComponent(query);
+  const tries = OVERPASS.map((url) => getJson<{ elements: OverpassEl[] }>(url, f, { method: 'POST', body, headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }, timeoutMs));
+  return new Promise((resolve, reject) => {
+    let failed = 0;
+    let firstErr: unknown;
+    for (const t of tries) {
+      t.then((j) => resolve(j.elements ?? [])).catch((e) => {
+        firstErr ??= e;
+        if (e instanceof ServiceError && e.offline && navigator.onLine === false) reject(e);
+        if (++failed === tries.length) reject(firstErr instanceof Error ? firstErr : new ServiceError('Places service unavailable.'));
+      });
+    }
+  });
+}
+
+/* Nominatim fallback: bounded searches box by box (max 1 request per second, per its usage policy). */
+let nominatimGapMs = 1100;
+let lastNominatim = 0;
+export function setNominatimGap(ms: number) {
+  nominatimGapMs = ms;
+}
+async function nominatimBox(q: string, box: [number, number, number, number], f: F): Promise<OverpassEl[]> {
+  const wait = lastNominatim + nominatimGapMs - Date.now();
+  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+  lastNominatim = Date.now();
+  const u = new URL('https://nominatim.openstreetmap.org/search');
+  u.searchParams.set('q', q);
+  u.searchParams.set('format', 'jsonv2');
+  u.searchParams.set('viewbox', box.map((v) => v.toFixed(4)).join(','));
+  u.searchParams.set('bounded', '1');
+  u.searchParams.set('limit', '40');
+  u.searchParams.set('extratags', '1');
+  u.searchParams.set('accept-language', 'en');
+  const j = await getJson<{ osm_type: string; osm_id: number; lat: string; lon: string; name?: string; category: string; type: string; extratags?: Record<string, string> | null }[]>(u.toString(), f, {}, 15000);
+  return j.map((x) => ({ type: x.osm_type, id: x.osm_id, lat: Number(x.lat), lon: Number(x.lon), tags: { ...(x.extratags ?? {}), [x.category]: x.type, ...(x.name ? { name: x.name } : {}) } }));
+}
+
+/** Split a route into boxes of about `km` and run the given searches in each. */
+async function nominatimAlong(line: LonLat[], queries: string[], km: number, f: F, onProgress?: (done: number, total: number) => void): Promise<OverpassEl[]> {
+  const boxes: [number, number, number, number][] = [];
+  let start = 0;
+  let acc = 0;
+  const pad = 0.015;
+  const push = (a: number, b: number) => {
+    const seg = line.slice(a, b + 1);
+    boxes.push([Math.min(...seg.map((p) => p[0])) - pad, Math.max(...seg.map((p) => p[1])) + pad, Math.max(...seg.map((p) => p[0])) + pad, Math.min(...seg.map((p) => p[1])) - pad]);
+  };
+  for (let i = 1; i < line.length; i++) {
+    acc += haversine(line[i - 1], line[i]);
+    if (acc >= km * 1000) {
+      push(start, i);
+      start = i;
+      acc = 0;
     }
   }
-  throw last instanceof Error ? last : new ServiceError('Places service unavailable.');
+  if (start < line.length - 1 || boxes.length === 0) push(start, line.length - 1);
+  const out: OverpassEl[] = [];
+  const total = boxes.length * queries.length;
+  let done = 0;
+  let ok = 0;
+  let lastErr: unknown;
+  for (const box of boxes) {
+    for (const q of queries) {
+      try {
+        out.push(...(await nominatimBox(q, box, f)));
+        ok++;
+      } catch (e) {
+        lastErr = e;
+        if (e instanceof ServiceError && e.offline) throw e;
+      }
+      onProgress?.(++done, total);
+    }
+  }
+  if (!ok) throw lastErr instanceof Error ? lastErr : new ServiceError('Places service unavailable.');
+  return out;
 }
 
 /** Food, fuel, toilets, medical and sights near a route line. */
-export async function fetchPlacesAlong(line: LonLat[], f: F = fetch): Promise<Omit<PlannedPlace, 'alongKm' | 'offKm'>[]> {
+export async function fetchPlacesAlong(line: LonLat[], f: F = fetch, onProgress?: (msg: string) => void): Promise<Omit<PlannedPlace, 'alongKm' | 'offKm'>[]> {
   // ~1 point per 5 km keeps the query small; Overpass buffers the polyline.
   let pts = thinLine(line, 5000);
   if (pts.length > 400) pts = pts.filter((_, i) => i % Math.ceil(pts.length / 400) === 0).concat([line[line.length - 1]]);
@@ -284,7 +349,21 @@ export async function fetchPlacesAlong(line: LonLat[], f: F = fetch): Promise<Om
   nwr(around:6000,${poly})["historic"~"^(fort|monument|castle|ruins|archaeological_site)$"]["name"];
 );
 out center tags qt;`;
-  return toPlaces(await overpass(q, f));
+  try {
+    return toPlaces(await overpass(q, f));
+  } catch (e) {
+    if (e instanceof ServiceError && e.offline && typeof navigator !== 'undefined' && navigator.onLine === false) throw e;
+    onProgress?.('Main places server is busy — using the backup (about a minute)…');
+    const thin = thinLine(line, 1000);
+    const food = await nominatimAlong(thin, ['restaurant', 'fuel', 'hospital'], 25, f, (d, t) => onProgress?.(`Searching along the route… ${Math.round((d / t) * 100)}%`));
+    let sights: OverpassEl[] = [];
+    try {
+      sights = await nominatimAlong(thin, ['tourist attraction', 'waterfall', 'viewpoint'], 80, f);
+    } catch {
+      /* sights are optional */
+    }
+    return toPlaces([...food, ...sights]);
+  }
 }
 
 /** Notable sights around the destination. */
@@ -302,7 +381,22 @@ export async function fetchSightsNear(p: GeoPoint, radiusM: number, f: F = fetch
   nwr(${a})["amenity"~"^(hospital|restaurant)$"]["name"];
 );
 out center tags qt;`;
-  return toPlaces(await overpass(q, f));
+  try {
+    return toPlaces(await overpass(q, f));
+  } catch (e) {
+    if (e instanceof ServiceError && e.offline && typeof navigator !== 'undefined' && navigator.onLine === false) throw e;
+    const d = radiusM / 111000;
+    const box: [number, number, number, number] = [p.lon - d, p.lat + d, p.lon + d, p.lat - d];
+    const out: OverpassEl[] = [];
+    for (const q2 of ['tourist attraction', 'waterfall', 'viewpoint', 'museum']) {
+      try {
+        out.push(...(await nominatimBox(q2, box, f)));
+      } catch {
+        /* optional */
+      }
+    }
+    return toPlaces(out);
+  }
 }
 
 /* ---------------- weather & elevation ---------------- */

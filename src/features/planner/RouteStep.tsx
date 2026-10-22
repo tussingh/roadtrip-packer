@@ -6,7 +6,7 @@ import { Notice } from '../../components/ui';
 import { summariseForecast } from '../../rules/weather';
 import { getTrip, saveTrip } from '../../storage/repo';
 import type { Assumptions, GeoPoint, Trip } from '../../types';
-import { addPlaces, applyPlanToTrip, buildRoutePlan, looksHilly } from './planner';
+import { addPlaces, applyPlanToTrip, buildRoutePlan, looksHilly, runPlacesJob } from './planner';
 import { searchPlaces } from './services';
 
 const hasCoords = (p: { lat?: number; lon?: number }) => typeof p.lat === 'number' && typeof p.lon === 'number';
@@ -194,13 +194,18 @@ export function RouteStep({ trip, assumptions, useDates, onTrip }: { trip: Trip;
 }
 
 /** After saving, fetch places along the route without blocking the user. */
-export async function fetchPlacesInBackground(tripId: string): Promise<void> {
+export function fetchPlacesInBackground(tripId: string): Promise<void> {
+  return runPlacesJob(tripId, (progress) => placesWork(tripId, progress));
+}
+
+async function placesWork(tripId: string, progress: (msg: string) => void): Promise<void> {
   try {
     const trip = await getTrip(tripId);
     if (!trip?.plan) return;
-    const plan = await addPlaces(trip.plan);
+    const plan = await addPlaces(trip.plan, fetch, progress);
     const latest = (await getTrip(tripId)) ?? trip;
-    const next = applyPlanToTrip({ ...latest }, plan);
+    if (!latest.plan || latest.plan.chosen !== plan.chosen) return;
+    const next = applyPlanToTrip({ ...latest }, { ...latest.plan, places: plan.places, placesFetchedAt: plan.placesFetchedAt, placesError: plan.placesError, destinationSights: plan.destinationSights });
     await saveTrip(next);
     await regenerateTrip(next);
     bump();
