@@ -43,9 +43,9 @@ Node 22 is used in CI.
 
 ## Deploy (GitHub Pages)
 
-1. Push this repository to GitHub.
-2. *Settings → Pages → Source:* **GitHub Actions**.
-3. Pushing to `main` runs `.github/workflows/ci.yml`: type-check, unit tests, build, Chromium end-to-end tests, then deploys `dist/`.
+1. Push this repository to GitHub (public).
+2. Pushing to `main` runs `.github/workflows/ci.yml`: type-check, unit tests, build, Chromium end-to-end tests, then publishes `dist/` to the `gh-pages` branch.
+3. GitHub Pages serves that branch. If the site does not appear, open *Settings → Pages* and set *Source: Deploy from a branch → `gh-pages` / root*.
 
 The app will be at **`https://<your-github-username>.github.io/<repository-name>/`** — for example `https://yourname.github.io/roadtrip-packer/`. Both of you open that same address and install it. (GitHub Pages is free for public repositories; the app repository contains no personal data. Family data goes in a separate private repository — see [docs/FAMILY-SYNC.md](docs/FAMILY-SYNC.md).)
 
