@@ -1,0 +1,12 @@
+node_modules/
+dist/
+dev-dist/
+coverage/
+*.local
+.DS_Store
+# Map data is large and has its own licence — never commit it here.
+*.pmtiles
+data/
+dist-data/
+test-results/
+tests/e2e/.artifacts/

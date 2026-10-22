@@ -1,0 +1,47 @@
+{
+  "name": "roadtrip-packer",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Zero-AI, offline-first family road-trip packing and offline map companion (PWA)",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p . && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -p .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "node tests/e2e/run-e2e.mjs",
+    "map:manifest": "node scripts/make-region-manifest.mjs",
+    "map:poi": "node scripts/build-poi-index.mjs",
+    "map:graph": "node scripts/build-road-graph.mjs",
+    "licenses": "node scripts/list-licenses.mjs"
+  },
+  "dependencies": {
+    "@fontsource-variable/overpass": "^5.3.0",
+    "@protomaps/basemaps": "^5.7.2",
+    "idb": "^8.0.4",
+    "maplibre-gl": "^6.15.0",
+    "pmtiles": "^4.5.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10.4.2",
+    "@testing-library/react": "^16.3.3",
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "fake-indexeddb": "^6.2.6",
+    "jsdom": "^29.1.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5",
+    "vite-plugin-pwa": "^2.0.0",
+    "vitest": "^5.0.5",
+    "workbox-build": "^7.4.1",
+    "workbox-window": "^7.4.1"
+  }
+}
