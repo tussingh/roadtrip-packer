@@ -9,6 +9,7 @@ import type {
   TravellerProfile,
   Trip,
 } from '../types';
+import { summariseForecast } from './weather';
 
 export type LifeStage = 'infant' | 'toddler' | 'preschool' | 'child' | 'teen' | 'adult';
 
@@ -46,6 +47,8 @@ export interface TripFacts {
   occupants: number;
   temperature: Exclude<Temperature, 'auto'>;
   temperatureAuto: boolean;
+  /** 'forecast' when auto weather came from a real forecast, else 'season'. */
+  weatherSource: 'forecast' | 'season' | 'manual';
   rain: Exclude<Rain, 'auto'>;
   rainAuto: boolean;
   month: number | null;
@@ -170,7 +173,9 @@ export function deriveFacts(
   const maxDayKm = driveDays.reduce((m, d) => Math.max(m, d.km), 0);
   const activities = new Set(trip.activities);
   const month = trip.startDate ? Number(trip.startDate.slice(5, 7)) : null;
-  const auto = autoWeather(month, trip.mountains, activities);
+  const seasonal = autoWeather(month, trip.mountains, activities);
+  const forecast = trip.plan?.forecast ? summariseForecast(trip.plan.forecast, trip.startDate, trip.endDate) : undefined;
+  const auto = forecast ?? seasonal;
   const temperature = trip.temperature === 'auto' ? auto.temperature : trip.temperature;
   const rain = trip.rain === 'auto' ? auto.rain : trip.rain;
   let laundryCycleDays = days;
@@ -196,6 +201,7 @@ export function deriveFacts(
     occupants: travellers.length,
     temperature,
     temperatureAuto: trip.temperature === 'auto',
+    weatherSource: trip.temperature !== 'auto' && trip.rain !== 'auto' ? 'manual' : forecast ? 'forecast' : 'season',
     rain,
     rainAuto: trip.rain === 'auto',
     month,

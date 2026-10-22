@@ -184,8 +184,8 @@ export default function MapsView() {
     <main className="page page--flush">
       <div className="pad-x">
         <TopBar
-          title="Offline maps"
-          sub={active ? `Showing ${active.name}` : 'No map tiles on this device yet'}
+          title="Maps"
+          sub={active ? `Showing ${active.name}` : 'Trip route maps and offline regions'}
           actions={
             tileRegions.length > 1 ? (
               <select className="select" style={{ width: 'auto', minHeight: 40 }} aria-label="Region shown on map" value={active?.id} onChange={(e) => setActiveId(e.target.value)}>
@@ -198,6 +198,38 @@ export default function MapsView() {
             ) : undefined
           }
         />
+        <section aria-label="Trip maps" style={{ marginBottom: 12 }}>
+          {data.trips.filter((t) => t.plan).length > 0 ? (
+            <ul className="list card">
+              {data.trips
+                .filter((t) => t.plan)
+                .map((t) => (
+                  <li key={t.id}>
+                    <a className="list-link" href={`#/trip/${t.id}/route`}>
+                      <Icon name="route" style={{ color: 'var(--sign)' }} />
+                      <span className="list-link__body">
+                        <span className="list-link__title">{tripTitle(t)}</span>
+                        <span className="list-link__meta">
+                          {Math.round(t.plan!.options[t.plan!.chosen]?.distanceKm ?? 0)} km · route, stops, restaurants{t.plan!.offlineMap ? ' · saved offline' : ' · tap to save map offline'}
+                        </span>
+                      </span>
+                      <Icon name="right" size={18} />
+                    </a>
+                  </li>
+                ))}
+            </ul>
+          ) : (
+            <Notice>
+              <p>
+                <strong>Trip maps:</strong> create a trip and pick the start and destination from the suggestions. Its route map, stops and restaurants appear here, and you can save the map along the route for offline use.
+              </p>
+              <a className="btn btn--small btn--primary" href="#/trips/new">
+                <Icon name="plus" size={16} /> New trip
+              </a>
+            </Notice>
+          )}
+          <p className="muted small" style={{ margin: '8px 0 0' }}>Below: advanced whole-region offline maps with offline search and routing (needs a published region pack).</p>
+        </section>
       </div>
       <div className="map-wrap">
         {active ? (

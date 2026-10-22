@@ -102,6 +102,44 @@ export function TripSummary({ tripId }: { tripId: string }) {
         </a>
       </div>
 
+      <a className="card card--pad route-card" href={`#/trip/${trip.id}/route`} style={{ display: 'block', marginTop: 12, textDecoration: 'none', color: 'inherit' }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Icon name="route" style={{ color: 'var(--sign)' }} />
+          <strong style={{ flex: 1 }}>Route, stops & restaurants</strong>
+          <Icon name="right" size={18} />
+        </span>
+        <span className="muted small" style={{ display: 'block', marginTop: 4 }}>
+          {trip.plan
+            ? `${Math.round(trip.plan.options[trip.plan.chosen]?.distanceKm ?? 0)} km one way · breaks, best food every 100 km, sights, hospitals, weather${trip.plan.offlineMap ? ' · map saved offline' : ''}`
+            : 'Pick the start and destination from suggestions to get the route automatically'}
+        </span>
+      </a>
+
+      <section className="section">
+        <div className="section-head">
+          <h2>Separate lists</h2>
+        </div>
+        <div className="chips" style={{ padding: 0 }}>
+          <a className="chip" href={`#/trip/${trip.id}/pack?tab=car`}>
+            <Icon name="car" size={16} /> Car
+          </a>
+          {profiles
+            .filter((p) => trip.travellerIds.includes(p.id))
+            .sort((x, y) => (x.kind === 'child' ? -1 : 0) - (y.kind === 'child' ? -1 : 0))
+            .map((p) => (
+              <a key={p.id} className="chip" href={`#/trip/${trip.id}/pack?tab=${p.id}`}>
+                <Icon name={p.kind === 'child' ? 'child' : 'user'} size={16} /> {p.name}
+              </a>
+            ))}
+          <a className="chip" href={`#/trip/${trip.id}/pack?tab=shared`}>
+            <Icon name="users" size={16} /> Family / shared
+          </a>
+          <a className="chip" href={`#/trip/${trip.id}/buy`}>
+            <Icon name="bag" size={16} /> Buy or bring?
+          </a>
+        </div>
+      </section>
+
       <section className="section">
         <div className="section-head">
           <h2>What the list is based on</h2>
@@ -116,7 +154,7 @@ export function TripSummary({ tripId }: { tripId: string }) {
             </dd>
             <dt>Distance</dt>
             <dd className="num">
-              {facts.totalKm > 0 ? `${Math.round(facts.totalKm)} km ${trip.kmSource === 'offline-route' ? '(offline road route)' : '(entered)'}` : 'Not entered — vehicle items assume local driving'}
+              {facts.totalKm > 0 ? `${Math.round(facts.totalKm)} km ${trip.kmSource === 'online-route' ? '(calculated road route)' : trip.kmSource === 'offline-route' ? '(offline road route)' : '(entered)'}` : 'Not entered — vehicle items assume local driving'}
             </dd>
             <dt>Driving</dt>
             <dd className="num">
@@ -125,8 +163,8 @@ export function TripSummary({ tripId }: { tripId: string }) {
             <dt>Weather</dt>
             <dd>
               {facts.temperature}
-              {facts.temperatureAuto ? ' (seasonal guess)' : ''}, {facts.rain}
-              {facts.rainAuto ? ' (seasonal guess)' : ''}
+              {facts.temperatureAuto ? (facts.weatherSource === 'forecast' ? ' (forecast)' : ' (seasonal guess)') : ''}, {facts.rain}
+              {facts.rainAuto ? (facts.weatherSource === 'forecast' ? ' (forecast)' : ' (seasonal guess)') : ''}
             </dd>
             <dt>Stay</dt>
             <dd>

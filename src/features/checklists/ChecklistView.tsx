@@ -47,7 +47,16 @@ export function ChecklistView({ tripId }: { tripId: string }) {
   const { data } = useQuery(() => load(tripId), [tripId]);
   const [items, setItems] = useState<ChecklistItem[]>([]);
   const [groupBy, setGroupBy] = useState<GroupBy>(() => readPrefs().groupBy);
-  const [filters, setFilters] = useState<Filters>(() => ({ ...readPrefs().filters, q: '' }));
+  const [filters, setFilters] = useState<Filters>(() => ({ ...readPrefs().filters, q: '', person: 'all' }));
+  const [tab, setTab] = useState<string>(() => {
+    const m = /[?&]tab=([^&]+)/.exec(window.location.hash);
+    if (m) return decodeURIComponent(m[1]);
+    try {
+      return sessionStorage.getItem(`milestone.checklist.tab.${tripId}`) ?? 'all';
+    } catch {
+      return 'all';
+    }
+  });
   const [open, setOpen] = useState<ChecklistItem>();
   const [adding, setAdding] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -139,9 +148,33 @@ export function ChecklistView({ tripId }: { tripId: string }) {
     [apply],
   );
 
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(`milestone.checklist.tab.${tripId}`, tab);
+    } catch {
+      /* ignore */
+    }
+  }, [tab, tripId]);
+
+  const inTab = useCallback(
+    (i: ChecklistItem, t: string) => {
+      if (t === 'all') return true;
+      const vehicle = i.assigneeId === 'car' || i.category.startsWith('vehicle');
+      if (t === 'car') return vehicle;
+      if (vehicle) return false;
+      const child = profiles.find((p) => p.id === i.assigneeId)?.kind === 'child';
+      if (t === 'shared') return i.assigneeId === 'shared' && !i.category.startsWith('baby');
+      const tp = profiles.find((p) => p.id === t);
+      if (tp?.kind === 'child') return i.assigneeId === t || (i.assigneeId === 'shared' && i.category.startsWith('baby')) || (child && i.assigneeId === t);
+      return i.assigneeId === t;
+    },
+    [profiles],
+  );
+
   const visible = useMemo(() => {
     const q = filters.q.trim().toLowerCase();
     return items.filter((i) => {
+      if (!inTab(i, tab)) return false;
       if (q && !`${i.name} ${i.notes}`.toLowerCase().includes(q)) return false;
       if (filters.unpackedOnly && (i.packed || i.unavailable)) return false;
       if (filters.toBuy && !(i.needsPurchase && !i.packed)) return false;
@@ -152,7 +185,7 @@ export function ChecklistView({ tripId }: { tripId: string }) {
       if (filters.priority !== 'all' && String(i.priority) !== filters.priority) return false;
       return true;
     });
-  }, [items, filters]);
+  }, [items, filters, tab, inTab]);
 
   const groups = useMemo(() => {
     const keyOf = (i: ChecklistItem): string => {
@@ -190,7 +223,7 @@ export function ChecklistView({ tripId }: { tripId: string }) {
   const prog = progressOf(items.filter((i) => !i.stale));
   const people = profiles.filter((p) => trip.travellerIds.includes(p.id));
   const activeFilters = [filters.person !== 'all', filters.category !== 'all', filters.location !== 'all', filters.priority !== 'all'].filter(Boolean).length;
-  const showWho = groupBy !== 'person';
+  const showWho = groupBy !== 'person' && (tab === 'all' || tab === 'shared' || tab === 'car');
 
   const markPacked = (list: ChecklistItem[], label: string) => {
     const changed = list.filter((i) => !i.packed && !i.unavailable).map((i) => ({ ...i, packed: true, owned: 'owned' as const, updatedAt: nowIso() }));
@@ -223,6 +256,26 @@ export function ChecklistView({ tripId }: { tripId: string }) {
         <div style={{ height: 12 }} />
       </div>
 
+      <div className="tabs" role="tablist" aria-label="Checklists">
+        {[
+          { id: 'all', label: 'Everything', icon: 'pack' as const },
+          { id: 'car', label: 'Car', icon: 'car' as const },
+          ...people.filter((p) => p.kind === 'child').map((p) => ({ id: p.id, label: `${p.name} (baby)`, icon: 'child' as const })),
+          ...people.filter((p) => p.kind === 'adult').map((p) => ({ id: p.id, label: p.name, icon: 'user' as const })),
+          { id: 'shared', label: 'Family / shared', icon: 'users' as const },
+        ].map((t) => {
+          const list = items.filter((i) => !i.stale && inTab(i, t.id));
+          const left = list.filter((i) => !i.packed && !i.unavailable).length;
+          if (t.id !== 'all' && list.length === 0) return null;
+          return (
+            <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} className="tab" onClick={() => setTab(t.id)}>
+              <Icon name={t.icon} size={18} />
+              <span>{t.label}</span>
+              <span className="tab__count num">{left || '✓'}</span>
+            </button>
+          );
+        })}
+      </div>
       <label className="search">
         <Icon name="search" size={20} />
         <span className="visually-hidden">Search items</span>
@@ -238,14 +291,9 @@ export function ChecklistView({ tripId }: { tripId: string }) {
         <button className="chip" aria-pressed={filters.essentialsOnly} onClick={() => setFilters({ ...filters, essentialsOnly: !filters.essentialsOnly })}>
           Essentials
         </button>
-        {people.map((p) => (
-          <button key={p.id} className="chip" aria-pressed={filters.person === p.id} onClick={() => setFilters({ ...filters, person: filters.person === p.id ? 'all' : p.id })}>
-            {p.name}
-          </button>
-        ))}
-        <button className="chip" aria-pressed={filters.person === 'car'} onClick={() => setFilters({ ...filters, person: filters.person === 'car' ? 'all' : 'car' })}>
-          Car
-        </button>
+        <a className="chip" href={`#/trip/${trip.id}/buy`}>
+          <Icon name="bag" size={16} /> Buy or bring?
+        </a>
         <button className="chip" aria-pressed={activeFilters > 0} onClick={() => setFiltersOpen(true)}>
           <Icon name="filter" size={16} /> More{activeFilters ? ` (${activeFilters})` : ''}
         </button>

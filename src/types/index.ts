@@ -85,7 +85,7 @@ export type Activity =
   | 'sightseeing'
   | 'work';
 
-export type KmSource = 'manual' | 'offline-route' | 'none';
+export type KmSource = 'manual' | 'offline-route' | 'online-route' | 'none';
 
 export interface Place {
   name: string;
@@ -134,12 +134,79 @@ export interface Trip {
   overnightDriving: boolean;
   resupply: Resupply;
   assumptionOverrides: Partial<Assumptions>;
+  /** Route, stops and places fetched from free online services, saved for offline use. */
+  plan?: TripPlan;
   status: 'planning' | 'completed' | 'archived';
   generatedAt?: ISODateTime;
   engineVersion?: string;
   notes: string;
   createdAt: ISODateTime;
   updatedAt: ISODateTime;
+}
+
+/* ------------------------------------------------------------------ */
+/* Online trip plan                                                    */
+/* ------------------------------------------------------------------ */
+
+export interface GeoPoint {
+  name: string;
+  lat: number;
+  lon: number;
+  detail?: string;
+}
+
+export interface RouteOption {
+  id: string;
+  label: string;
+  distanceKm: number;
+  /** Router estimate without traffic, hours. */
+  durationH: number;
+  /** Share of distance on national highways (refs starting NH/AH/NE), 0–100. */
+  highwayPct: number;
+  roads: { name: string; km: number }[];
+  legs: { from: string; to: string; km: number; h: number }[];
+  /** Simplified [lon, lat] line. */
+  geometry: [number, number][];
+  /** Cumulative km and hours at each geometry vertex (for time → place lookups). */
+  cumKm: number[];
+  cumH: number[];
+}
+
+export interface PlannedPlace {
+  id: string;
+  name: string;
+  kind: string;
+  lat: number;
+  lon: number;
+  alongKm: number;
+  offKm: number;
+  tags: Record<string, string>;
+}
+
+export interface DayForecast {
+  date: string;
+  tMax: number;
+  tMin: number;
+  rainMm: number;
+  rainProb: number;
+  code: number;
+}
+
+export interface TripPlan {
+  fetchedAt: ISODateTime;
+  origin: GeoPoint;
+  destination: GeoPoint;
+  via: GeoPoint[];
+  options: RouteOption[];
+  chosen: number;
+  places?: PlannedPlace[];
+  placesFetchedAt?: ISODateTime;
+  placesError?: string;
+  destinationSights?: PlannedPlace[];
+  forecast?: DayForecast[];
+  forecastFor?: string;
+  elevation?: { min: number; max: number };
+  offlineMap?: { tiles: number; bytes: number; savedAt: ISODateTime };
 }
 
 /* ------------------------------------------------------------------ */
@@ -288,6 +355,7 @@ export interface AlwaysPackItem {
 
 export interface Assumptions {
   avgSpeedKmh: number;
+  routeTimeFactor: number;
   restBreakEveryHoursWithChild: number;
   restBreakEveryHoursAdults: number;
   adultOutfitsPerDay: number;
@@ -334,6 +402,8 @@ export interface Settings {
   assumptions: Partial<Assumptions>;
   lastBackupAt?: ISODateTime;
   persistenceRequested?: boolean;
+  /** For fuel-cost estimates. */
+  car?: { mileageKmpl: number; fuelPricePerLitre: number };
   onboarded: boolean;
   updatedAt: ISODateTime;
 }

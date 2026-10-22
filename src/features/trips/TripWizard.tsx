@@ -9,8 +9,11 @@ import { autoWeather } from '../../rules/context';
 import { getSettings, getTrip, listProfiles, saveTrip } from '../../storage/repo';
 import type { Activity, Trip } from '../../types';
 import { addDays } from './tripUtils';
+import { PlaceSearchField } from '../planner/PlaceSearchField';
+import { RouteStep, fetchPlacesInBackground } from '../planner/RouteStep';
+import { applyPlanToTrip } from '../planner/planner';
 
-const STEPS = ['Where and when', 'The drive', 'Family and stay', 'Conditions and plans'];
+const STEPS = ['Where and when', 'Your route', 'Family and stay', 'Conditions and plans'];
 
 async function load(tripId?: string) {
   const [profiles, settings, trip] = await Promise.all([listProfiles(), getSettings(), tripId ? getTrip(tripId) : Promise.resolve(undefined)]);
@@ -27,6 +30,7 @@ export function TripWizard({ tripId }: { tripId?: string }) {
   const [step, setStep] = useState(0);
   const [useDates, setUseDates] = useState(true);
   const [knowHours, setKnowHours] = useState(false);
+  const [manual, setManual] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
 
@@ -57,7 +61,7 @@ export function TripWizard({ tripId }: { tripId?: string }) {
 
   const validate = (s: number): string | undefined => {
     if (s === 0) {
-      if (!trip.destination.name.trim() && !trip.name.trim()) return 'Add a destination or a trip name.';
+      if (!trip.destination.name.trim() && !trip.name.trim()) return 'Add where you are going.';
       if (useDates && !trip.startDate) return 'Pick a departure date, or switch to a number of days.';
       if (trip.nights > trip.days) return 'Nights cannot be more than days.';
     }
@@ -85,15 +89,16 @@ export function TripWizard({ tripId }: { tripId?: string }) {
     try {
       const final: Trip = {
         ...trip,
-        name: trip.name.trim() || trip.destination.name.trim(),
+        name: trip.name.trim() || trip.destination.name.split(',')[0].trim(),
         startDate: useDates ? trip.startDate : undefined,
         endDate: useDates ? trip.endDate : undefined,
-        totalDriveHours: knowHours ? trip.totalDriveHours : undefined,
-        kmSource: trip.kmSource === 'offline-route' ? 'offline-route' : trip.totalKm > 0 ? 'manual' : 'none',
+        totalDriveHours: trip.kmSource === 'online-route' || knowHours ? trip.totalDriveHours : undefined,
+        kmSource: trip.kmSource === 'online-route' || trip.kmSource === 'offline-route' ? trip.kmSource : trip.totalKm > 0 ? 'manual' : 'none',
       };
       await saveTrip(final);
       const res = await regenerateTrip(final);
       bump();
+      if (final.plan && !final.plan.places && navigator.onLine) void fetchPlacesInBackground(final.id);
       if (editing) {
         const parts = [`${res.added} added`, `${res.removed} removed`, `${res.qtyChanged} quantities changed`];
         showToast(`List updated: ${parts.join(', ')}. Your ticks and edits were kept.`);
@@ -109,7 +114,7 @@ export function TripWizard({ tripId }: { tripId?: string }) {
     }
   };
 
-  const perDayHours = trip.drivingDays > 0 ? (knowHours && trip.totalDriveHours ? trip.totalDriveHours : trip.totalKm / a.avgSpeedKmh) / trip.drivingDays : 0;
+  const perDayHours = trip.drivingDays > 0 ? ((knowHours || trip.kmSource === 'online-route') && trip.totalDriveHours ? trip.totalDriveHours : trip.totalKm / a.avgSpeedKmh) / trip.drivingDays : 0;
   const auto = autoWeather(trip.startDate && useDates ? Number(trip.startDate.slice(5, 7)) : null, trip.mountains, new Set(trip.activities));
 
   return (
@@ -128,10 +133,43 @@ export function TripWizard({ tripId }: { tripId?: string }) {
 
       {step === 0 && (
         <>
-          <TextInput label="Destination" placeholder="e.g. Coorg" value={trip.destination.name} onChange={(v) => set({ destination: { ...trip.destination, name: v } })} autoFocus={!editing} />
-          <TextInput label="Starting from" value={trip.origin.name} onChange={(v) => set({ origin: { ...trip.origin, name: v } })} />
-          <TextInput label="Trip name" hint="Optional — the destination is used if you leave this empty." placeholder={trip.destination.name || 'Weekend in the hills'} value={trip.name} onChange={(v) => set({ name: v })} />
-          <Toggle label="I know the dates" hint="Dates set your child’s exact age, the season and your packing reminders." checked={useDates} onChange={setUseDates} />
+          <PlaceSearchField
+            label="Starting from"
+            value={trip.origin}
+            allowMyLocation
+            onText={(name) => set({ origin: { name } })}
+            onPick={(p) => set({ origin: { name: p.name, lat: p.lat, lon: p.lon } })}
+          />
+          <PlaceSearchField
+            label="Going to"
+            value={trip.destination}
+            placeholder="e.g. Madikeri, Coorg"
+            near={trip.origin.lon !== undefined ? [trip.origin.lon, trip.origin.lat!] : undefined}
+            onText={(name) => set({ destination: { name } })}
+            onPick={(p) => set({ destination: { name: p.name, lat: p.lat, lon: p.lon } })}
+          />
+          {trip.stops.map((s, i) => (
+            <div key={s.id} className="card card--pad" style={{ marginBottom: 12 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                <div style={{ flex: 1 }}>
+                  <PlaceSearchField
+                    label={`Stop ${i + 1} on the way`}
+                    value={s}
+                    onText={(name) => set({ stops: trip.stops.map((x) => (x.id === s.id ? { ...x, name, lat: undefined, lon: undefined } : x)) })}
+                    onPick={(p) => set({ stops: trip.stops.map((x) => (x.id === s.id ? { ...x, name: p.name, lat: p.lat, lon: p.lon } : x)) })}
+                  />
+                </div>
+                <button type="button" className="icon-btn" aria-label={`Remove stop ${i + 1}`} onClick={() => set({ stops: trip.stops.filter((x) => x.id !== s.id) })} style={{ marginTop: 28 }}>
+                  <Icon name="trash" />
+                </button>
+              </div>
+              <Toggle label="Staying overnight here" checked={s.overnight} onChange={(v) => set({ stops: trip.stops.map((x) => (x.id === s.id ? { ...x, overnight: v } : x)) })} />
+            </div>
+          ))}
+          <button type="button" className="btn btn--small" style={{ marginBottom: 16 }} onClick={() => set({ stops: [...trip.stops, { id: uid(), name: '', overnight: false }] })}>
+            <Icon name="plus" size={18} /> Add a stop on the way
+          </button>
+          <Toggle label="I know the dates" hint="Dates give a real weather forecast, your child’s exact age and packing reminders." checked={useDates} onChange={setUseDates} />
           {useDates ? (
             <div className="two-col">
               <TextInput label="Leave on" type="date" value={trip.startDate ?? ''} onChange={(v) => setDates(v || undefined, trip.endDate)} />
@@ -148,43 +186,30 @@ export function TripWizard({ tripId }: { tripId?: string }) {
               {trip.days} day{trip.days === 1 ? '' : 's'}, {trip.nights} night{trip.nights === 1 ? '' : 's'}
             </p>
           )}
+          <TextInput label="Trip name" hint="Optional — the destination is used if you leave this empty." placeholder={trip.destination.name || 'Weekend in the hills'} value={trip.name} onChange={(v) => set({ name: v })} />
         </>
       )}
 
       {step === 1 && (
         <>
-          <Stepper label="Total driving distance" hint="Round trip, in kilometres. Measure it in Offline Maps if you have the region downloaded, or enter it from any map." value={trip.totalKm} min={0} max={10000} step={10} suffix="km" onChange={(v) => set({ totalKm: v, kmSource: v > 0 ? 'manual' : 'none' })} />
-          {trip.kmSource === 'offline-route' && <p className="muted small">Distance came from an offline road route.</p>}
-          <Stepper label="Driving days" hint="Days with a significant drive — usually the outward and return days." value={trip.drivingDays} min={0} max={trip.days} onChange={(v) => set({ drivingDays: v })} />
-          <Toggle label="I know how long the driving takes" hint={`Otherwise estimated at ${a.avgSpeedKmh} km/h, including towns and stops.`} checked={knowHours} onChange={setKnowHours} />
-          {knowHours && <Stepper label="Total hours in the car" value={trip.totalDriveHours ?? Math.round((trip.totalKm / a.avgSpeedKmh) * 2) / 2} min={0} max={200} step={0.5} suffix="h" onChange={(v) => set({ totalDriveHours: v })} />}
-          {trip.drivingDays > 0 && trip.totalKm > 0 && (
-            <Notice>
-              <p className="num">
-                About {Math.round(trip.totalKm / trip.drivingDays)} km and {Math.round(perDayHours * 10) / 10} h per driving day. Hours drive snacks, diapers, charging and rest stops; kilometres drive vehicle checks and cash.
-              </p>
-            </Notice>
+          <RouteStep trip={trip} assumptions={a} useDates={useDates} onTrip={(t) => setTrip(t)} />
+          <Toggle label="Return by the same route" checked={trip.returnSameRoute} onChange={(v) => setTrip(trip.plan ? applyPlanToTrip({ ...trip, returnSameRoute: v }, trip.plan) : { ...trip, returnSameRoute: v })} />
+          <Toggle label="Adjust distance and driving time myself" hint={trip.kmSource === 'online-route' ? 'Only needed if the calculated route is not how you will drive.' : 'Needed when offline or when the places were typed without picking a suggestion.'} checked={manual || trip.kmSource !== 'online-route'} onChange={setManual} />
+          {(manual || trip.kmSource !== 'online-route') && (
+            <>
+              <Stepper label="Total driving distance" hint="Whole trip, there and back, in kilometres." value={trip.totalKm} min={0} max={10000} step={10} suffix="km" onChange={(v) => set({ totalKm: v, kmSource: v > 0 ? 'manual' : 'none', legs: [] })} />
+              <Stepper label="Driving days" hint="Days with a significant drive — usually the outward and return days." value={trip.drivingDays} min={0} max={trip.days} onChange={(v) => set({ drivingDays: v, legs: [] })} />
+              <Toggle label="I know how long the driving takes" hint={`Otherwise estimated at ${a.avgSpeedKmh} km/h, including towns and stops.`} checked={knowHours} onChange={setKnowHours} />
+              {knowHours && <Stepper label="Total hours in the car" value={trip.totalDriveHours ?? Math.round((trip.totalKm / a.avgSpeedKmh) * 2) / 2} min={0} max={200} step={0.5} suffix="h" onChange={(v) => set({ totalDriveHours: v, legs: [] })} />}
+              {trip.drivingDays > 0 && trip.totalKm > 0 && (
+                <Notice>
+                  <p className="num">
+                    About {Math.round(trip.totalKm / trip.drivingDays)} km and {Math.round(perDayHours * 10) / 10} h per driving day.
+                  </p>
+                </Notice>
+              )}
+            </>
           )}
-          <fieldset className="field">
-            <legend className="field__label">Stops on the way</legend>
-            {trip.stops.map((s, i) => (
-              <div key={s.id} className="card card--pad" style={{ marginBottom: 8 }}>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-                  <div style={{ flex: 1 }}>
-                    <TextInput label={`Stop ${i + 1}`} value={s.name} onChange={(v) => set({ stops: trip.stops.map((x) => (x.id === s.id ? { ...x, name: v } : x)) })} />
-                  </div>
-                  <button type="button" className="icon-btn" aria-label={`Remove stop ${i + 1}`} onClick={() => set({ stops: trip.stops.filter((x) => x.id !== s.id) })} style={{ marginBottom: 16 }}>
-                    <Icon name="trash" />
-                  </button>
-                </div>
-                <Toggle label="Overnight stop" checked={s.overnight} onChange={(v) => set({ stops: trip.stops.map((x) => (x.id === s.id ? { ...x, overnight: v } : x)) })} />
-              </div>
-            ))}
-            <button type="button" className="btn btn--small" onClick={() => set({ stops: [...trip.stops, { id: uid(), name: '', overnight: false }] })}>
-              <Icon name="plus" size={18} /> Add a stop
-            </button>
-          </fieldset>
-          <Toggle label="Return by the same route" checked={trip.returnSameRoute} onChange={(v) => set({ returnSameRoute: v })} />
         </>
       )}
 

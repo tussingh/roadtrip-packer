@@ -527,7 +527,7 @@ export const sharedRules: ItemRule[] = [
       const days = restBreaksPerDay(f);
       const total = days.reduce((s, d) => s + d.breaks, 0);
       const why = days.map((d) => `${d.label}: ${fmt(d.hours)} h ÷ ${fmt(d.interval)} h → ${pl(d.breaks, 'stop')}`);
-      why.push('Use the Offline Maps tab to find fuel, toilets and food along the route.');
+      why.push('The Route & stops screen lists food, fuel and toilets along the route.');
       return n(total, 'stops', why);
     },
     necessity: (f) => (f.hasLongDriveDay || hasChild(f) ? 'essential' : 'recommended'),
@@ -538,7 +538,7 @@ export const sharedRules: ItemRule[] = [
   },
   {
     id: 'plan-offline-map',
-    name: 'Offline map region downloaded for the route',
+    name: 'Route map saved for offline (Route & stops → Save map) + area downloaded in Google Maps',
     category: 'planning',
     scope: 'shared',
     when: (f) => (drives(f) ? (f.remote ? 'No signal likely on parts of the route' : 'Backup if mobile data drops') : false),

@@ -4,6 +4,8 @@ import { Toast } from '../components/ui';
 import { Dashboard } from '../features/dashboard/Dashboard';
 import { ChecklistView } from '../features/checklists/ChecklistView';
 import { ReadinessView } from '../features/checklists/ReadinessView';
+import { BuyKeepView } from '../features/checklists/BuyKeepView';
+import { TripPlanView } from '../features/planner/TripPlanView';
 import { EssentialsView } from '../features/essentials/EssentialsView';
 import { HistoryView } from '../features/history/HistoryView';
 import { ReviewWizard } from '../features/history/ReviewWizard';
@@ -63,9 +65,9 @@ function useTheme() {
 }
 
 const TABS: { href: string; label: string; icon: IconName; match: (r: string[]) => boolean }[] = [
-  { href: '#/', label: 'Home', icon: 'home', match: (r) => r.length === 0 || r[0] === 'trips' || (r[0] === 'trip' && !['pack', 'ready'].includes(r[2] ?? '')) },
-  { href: '#/pack', label: 'Pack', icon: 'pack', match: (r) => r[0] === 'pack' || (r[0] === 'trip' && ['pack', 'ready'].includes(r[2] ?? '')) },
-  { href: '#/maps', label: 'Maps', icon: 'map', match: (r) => r[0] === 'maps' },
+  { href: '#/', label: 'Home', icon: 'home', match: (r) => r.length === 0 || r[0] === 'trips' || (r[0] === 'trip' && !['pack', 'ready', 'buy', 'route'].includes(r[2] ?? '')) },
+  { href: '#/pack', label: 'Pack', icon: 'pack', match: (r) => r[0] === 'pack' || (r[0] === 'trip' && ['pack', 'ready', 'buy'].includes(r[2] ?? '')) },
+  { href: '#/maps', label: 'Maps', icon: 'map', match: (r) => r[0] === 'maps' || (r[0] === 'trip' && r[2] === 'route') },
   { href: '#/inventory', label: 'Inventory', icon: 'box', match: (r) => r[0] === 'inventory' },
   { href: '#/more', label: 'More', icon: 'more', match: (r) => ['more', 'settings', 'profiles', 'history', 'essentials'].includes(r[0] ?? '') },
 ];
@@ -80,6 +82,8 @@ function Screen({ route }: { route: string[] }) {
     if (c === 'pack') return <ChecklistView tripId={b} />;
     if (c === 'ready') return <ReadinessView tripId={b} />;
     if (c === 'review') return <ReviewWizard tripId={b} />;
+    if (c === 'route') return <TripPlanView tripId={b} />;
+    if (c === 'buy') return <BuyKeepView tripId={b} />;
     return <TripSummary tripId={b} />;
   }
   if (a === 'pack') return <PackRedirect />;

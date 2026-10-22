@@ -93,6 +93,17 @@ export function SettingsView() {
 
       <section className="section">
         <div className="section-head">
+          <h2>Your car</h2>
+        </div>
+        <p className="muted small mt0">Used for the fuel-cost estimate on the route screen.</p>
+        <div className="two-col">
+          <Stepper label="Mileage" value={s.car?.mileageKmpl ?? 15} min={5} max={40} step={0.5} suffix="km/L" onChange={(v) => save({ ...s, car: { mileageKmpl: v, fuelPricePerLitre: s.car?.fuelPricePerLitre ?? 103 } })} />
+          <Stepper label="Fuel price" value={s.car?.fuelPricePerLitre ?? 103} min={50} max={200} step={1} suffix="₹/L" onChange={(v) => save({ ...s, car: { mileageKmpl: s.car?.mileageKmpl ?? 15, fuelPricePerLitre: v } })} />
+        </div>
+      </section>
+
+      <section className="section">
+        <div className="section-head">
           <h2>Family-wide assumptions</h2>
           <button className="btn btn--small btn--ghost" onClick={() => setShowAssumptions(true)}>
             Edit
@@ -177,7 +188,8 @@ export function SettingsView() {
           <p>1. The site you installed it from, to check for app updates.</p>
           <p>2. Map catalog and region file addresses you choose in Offline Maps, only when you start a download. Nothing about your trips is sent.</p>
           <p>3. Only if you turn on Family sync: api.github.com, to read and write one encrypted file in your private repository. The family passphrase never leaves your phones.</p>
-          <p>Live traffic, weather, business hours and road closures are not available in this app.</p>
+          <p>4. Trip planning (when online): the place names you type and the start, stops and destination coordinates go to free OpenStreetMap-based services — Photon/Nominatim (place search), OSRM (routes), Overpass (restaurants, fuel, hospitals, sights), Open-Meteo (weather, altitude) and OpenFreeMap (map tiles). No names, ages, family details or trip dates are sent.</p>
+          <p>Live traffic and road closures are not available — use the “Navigate in Google Maps” button for those.</p>
         </div>
       </section>
 

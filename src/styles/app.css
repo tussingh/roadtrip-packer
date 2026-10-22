@@ -1199,3 +1199,24 @@ input[type='date'].input {
   padding: 0 6px;
   font-size: var(--fs-s);
 }
+
+.route-opt { text-align: left; width: 100%; border: 2px solid var(--kerb); cursor: pointer; font: inherit; color: inherit; }
+.route-opt[data-on='true'] { border-color: var(--sign); }
+
+.tabs { display: flex; gap: 8px; overflow-x: auto; padding: 0 16px 12px; scrollbar-width: none; position: sticky; top: 0; z-index: 5; background: var(--paper); }
+.tabs::-webkit-scrollbar { display: none; }
+.tab { flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 14px; border-radius: 999px; border: 1.5px solid var(--kerb); background: var(--surface); color: inherit; font: inherit; font-weight: 600; cursor: pointer; }
+.tab[aria-selected='true'] { background: var(--sign); border-color: var(--sign); color: var(--sign-ink); }
+.tab__count { font-size: var(--fs-xs); padding: 1px 7px; border-radius: 999px; background: var(--surface-2); color: var(--asphalt); }
+.tab[aria-selected='true'] .tab__count { background: var(--cap); color: var(--cap-ink); }
+
+.map--fallback { display: flex; align-items: center; justify-content: center; text-align: center; padding: 24px; background: var(--surface-2); border-radius: var(--radius-m); }
+.drive-tl { list-style: none; margin: 0; padding: 0 0 0 18px; border-left: 3px solid var(--sign); }
+.drive-tl > li { position: relative; padding: 0 0 16px 14px; }
+.drive-tl > li::before { content: ''; position: absolute; left: -27px; top: 3px; width: 14px; height: 14px; border-radius: 50%; background: var(--surface); border: 3px solid var(--sign); }
+.drive-tl > li[data-meal]::before { background: var(--cap); }
+.drive-tl > li > b { margin-right: 6px; }
+.drive-tl .btn { margin-top: 6px; }
+.forecast { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
+.forecast__day { display: flex; flex-direction: column; gap: 2px; padding: 10px; border-radius: var(--radius-s); background: var(--surface); border: 1px solid var(--kerb); }
+details.card > summary { cursor: pointer; min-height: 32px; }

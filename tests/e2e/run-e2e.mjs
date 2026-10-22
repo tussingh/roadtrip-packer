@@ -92,6 +92,52 @@ const server = createServer((req, res) => {
   createReadStream(file).pipe(res);
 });
 
+/* ---------------- mocked free online services (no real network in CI) ---------------- */
+const LINE = Array.from({ length: 301 }, (_, i) => [77.6, 12.9 + (2.7 * i) / 300]);
+const atKm = (km, offKm = 0) => ({ lon: 77.6 + offKm / 108, lat: 12.9 + (2.7 * km) / 300 });
+const PLACES = [
+  { id: 1, km: 48, tags: { amenity: 'restaurant', name: 'Highway Dhaba', cuisine: 'indian;vegetarian', toilets: 'yes' } },
+  { id: 2, km: 49, tags: { amenity: 'fuel', name: 'Indian Oil' } },
+  { id: 3, km: 120, tags: { amenity: 'restaurant', name: 'Udupi Grand', cuisine: 'south_indian', 'diet:vegetarian': 'yes' } },
+  { id: 4, km: 121, tags: { amenity: 'fuel', name: 'HP Petrol' } },
+  { id: 5, km: 205, tags: { amenity: 'restaurant', name: 'Kamat Upachar', brand: 'Kamat', cuisine: 'indian' } },
+  { id: 6, km: 206, tags: { amenity: 'fuel', name: 'BPCL' } },
+  { id: 7, km: 160, tags: { amenity: 'hospital', name: 'Testpur District Hospital', emergency: 'yes', phone: '+91 80 1234 5678' } },
+  { id: 8, km: 240, tags: { natural: 'waterfall', waterway: 'waterfall', name: 'Mock Falls', wikidata: 'Q1' } },
+  { id: 9, km: 299, tags: { tourism: 'viewpoint', name: 'Sunset Point', wikidata: 'Q2' } },
+].map((p) => ({ type: 'node', id: p.id, ...atKm(p.km, 0.2), tags: p.tags }));
+const MOCKS = {
+  'photon.komoot.io': (u) => {
+    const q = u.searchParams.get('q').toLowerCase();
+    const feats = [];
+    if ('bengaluru'.startsWith(q.slice(0, 4))) feats.push({ properties: { name: 'Bengaluru', state: 'Karnataka', country: 'India', osm_value: 'city' }, geometry: { coordinates: [77.6, 12.9] } });
+    if (q.startsWith('testp')) feats.push({ properties: { name: 'Testpur Hills', state: 'Karnataka', country: 'India', osm_value: 'town' }, geometry: { coordinates: [77.6, 15.6] } });
+    return { features: feats };
+  },
+  'nominatim.openstreetmap.org': () => [],
+  'routing.openstreetmap.de': () => ({
+    code: 'Ok',
+    routes: [
+      { distance: 300000, duration: 4 * 3600, geometry: { coordinates: LINE }, legs: [{ distance: 300000, duration: 4 * 3600, steps: [{ distance: 280000, duration: 13000, name: 'Highway', ref: 'NH 48' }, { distance: 20000, duration: 1400, name: 'Town Road' }] }] },
+      { distance: 320000, duration: 4.6 * 3600, geometry: { coordinates: LINE.map(([x, y]) => [x + 0.05, y]) }, legs: [{ distance: 320000, duration: 4.6 * 3600, steps: [{ distance: 320000, duration: 16560, name: 'State Highway', ref: 'SH 17' }] }] },
+    ],
+  }),
+  'api.open-meteo.com': (u) =>
+    u.pathname.includes('elevation')
+      ? { elevation: u.searchParams.get('latitude').split(',').map((_, i) => 900 + i * 5) }
+      : { daily: { time: Array.from({ length: 16 }, (_, i) => new Date(Date.now() + i * 86400000).toISOString().slice(0, 10)), temperature_2m_max: Array(16).fill(24), temperature_2m_min: Array(16).fill(14), precipitation_sum: Array(16).fill(0), precipitation_probability_max: Array(16).fill(10), weather_code: Array(16).fill(1) } },
+  'overpass-api.de': () => ({ elements: PLACES }),
+  'tiles.openfreemap.org': (u) => (u.pathname.startsWith('/styles/') ? { version: 8, sources: {}, layers: [{ id: 'bg', type: 'background', paint: { 'background-color': '#e8efe9' } }] } : {}),
+};
+async function installServiceMocks(context) {
+  await context.route(/^https:\/\//, async (route) => {
+    const u = new URL(route.request().url());
+    const h = MOCKS[u.hostname];
+    if (!h) return route.fulfill({ status: 204, body: '' });
+    return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'Access-Control-Allow-Origin': '*' }, body: JSON.stringify(h(u)) });
+  });
+}
+
 let browser, ctx, page, base;
 const consoleErrors = [];
 
@@ -103,6 +149,7 @@ before(async () => {
     args: ['--no-sandbox', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'],
   });
   ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, serviceWorkers: 'allow' });
+  await installServiceMocks(ctx);
   page = await ctx.newPage();
   page.on('console', (m) => m.type() === 'error' && consoleErrors.push(m.text()));
   page.on('pageerror', (e) => consoleErrors.push(`[pageerror] ${e.message}`));
@@ -138,7 +185,7 @@ test('app installs its service worker and precaches the shell', async () => {
 
 test('Scenario F: create and edit a checklist, then reopen in airplane mode', async () => {
   await goto('/trips/new');
-  await page.getByLabel('Destination').fill('Chikmagalur');
+  await page.getByLabel('Going to').fill('Chikmagalur');
   await page.getByRole('button', { name: 'Next' }).click();
   await page.getByRole('textbox', { name: 'Total driving distance' }).fill('500');
   await page.getByRole('button', { name: 'Next' }).click();
@@ -172,6 +219,50 @@ test('Scenario F: create and edit a checklist, then reopen in airplane mode', as
   await page.getByRole('button', { name: 'Save now' }).click();
   await page.getByText(/Your ticks and edits were kept/).waitFor();
   await ctx.setOffline(false);
+});
+
+test('Scenario H: automatic route, stops, restaurants every 100 km, separate lists, buy or bring', async () => {
+  await goto('/trips/new');
+  await page.getByLabel('Starting from').fill('Bengalur');
+  await page.getByRole('option', { name: /Bengaluru/ }).click();
+  await page.getByLabel('Going to').fill('Testpur');
+  await page.getByRole('option', { name: /Testpur Hills/ }).click();
+  await shot('wizard-places');
+  await page.getByRole('button', { name: 'Next' }).click();
+  await page.getByText('Choose your route').waitFor({ timeout: 15000 });
+  const routeText = await page.locator('main').innerText();
+  assert.match(routeText, /Fastest/);
+  assert.match(routeText, /300 km · 5 h/);
+  assert.match(routeText, /hills\/ghats detected/);
+  await shot('wizard-route');
+  await page.getByRole('button', { name: 'Next' }).click();
+  await page.getByRole('button', { name: 'Next' }).click();
+  await page.getByRole('button', { name: 'Create trip and list' }).click();
+  await page.getByRole('link', { name: /Route, stops & restaurants/ }).click();
+  await page.getByRole('heading', { name: 'Best food every 100 km' }).waitFor({ timeout: 20000 });
+  const plan = await page.locator('main').innerText();
+  assert.match(plan, /Highway Dhaba/);
+  assert.match(plan, /Udupi Grand/);
+  assert.match(plan, /Mock Falls/);
+  assert.match(plan, /Leave by/);
+  const g = await page.getByRole('link', { name: 'Reviews & photos' }).first().getAttribute('href');
+  assert.match(g, /^https:\/\/www\.google\.com\/maps\/search\//);
+  const nav = await page.getByRole('link', { name: /Navigate in Google Maps/ }).getAttribute('href');
+  assert.match(nav, /google\.com\/maps\/dir\/.*origin=12\.9/);
+  await shot('route-plan');
+  await page.evaluate(() => window.scrollTo(0, 1400));
+  await shot('route-plan-food');
+
+  await page.goBack();
+  await page.getByRole('link', { name: 'Open checklist' }).click();
+  await page.getByRole('tab', { name: /Car/ }).click();
+  await page.locator('.item').first().waitFor();
+  await shot('checklist-car-tab');
+  await page.getByRole('tab', { name: /Everything/ }).click();
+
+  await page.getByRole('link', { name: /Buy or bring/ }).click();
+  await page.getByRole('heading', { name: /Bring from home — hard to buy on the road/ }).waitFor();
+  await shot('buy-or-bring');
 });
 
 test('Scenario G: download a region, go offline, render map, search and route', async () => {

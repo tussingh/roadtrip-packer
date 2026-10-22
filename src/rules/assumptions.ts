@@ -16,6 +16,7 @@ export interface AssumptionDef {
  */
 export const DEFAULT_ASSUMPTIONS: Assumptions = {
   avgSpeedKmh: 50,
+  routeTimeFactor: 1.25,
   restBreakEveryHoursWithChild: 2,
   restBreakEveryHoursAdults: 2.5,
   adultOutfitsPerDay: 1,
@@ -55,6 +56,7 @@ export const DEFAULT_ASSUMPTIONS: Assumptions = {
 
 export const ASSUMPTION_DEFS: Record<keyof Assumptions, AssumptionDef> = {
   avgSpeedKmh: { label: 'Average driving speed', unit: 'km/h', group: 'Driving', min: 20, max: 90, step: 1, help: 'Used to estimate hours in the car when you do not enter them. Includes slow stretches and towns, not just highway speed.' },
+  routeTimeFactor: { label: 'Real-world slowdown on routed times', unit: '×', group: 'Driving', min: 1, max: 2, step: 0.05, help: 'Online route times assume free-flowing roads. Towns, tolls, trucks and ghats make Indian highways slower; 1.25 adds 25%.' },
   restBreakEveryHoursWithChild: { label: 'Break interval with a child', unit: 'h', group: 'Driving', min: 1, max: 4, step: 0.25, help: 'How often to stop for changes, feeds and stretching when a young child is aboard.' },
   restBreakEveryHoursAdults: { label: 'Break interval, adults only', unit: 'h', group: 'Driving', min: 1, max: 4, step: 0.25, help: 'Driver-fatigue break interval when no child is aboard.' },
   longDriveDayHours: { label: 'Long driving day', unit: 'h', group: 'Driving', min: 3, max: 10, step: 0.5, help: 'A driving day at or above this many hours triggers long-drive comfort and fatigue items.' },

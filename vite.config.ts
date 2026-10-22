@@ -38,8 +38,20 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         navigateFallback: 'index.html',
         cleanupOutdatedCaches: true,
-        // Map region data lives in IndexedDB, never in the HTTP cache.
-        runtimeCaching: [],
+        // Offline region archives live in IndexedDB. Online OpenFreeMap tiles for
+        // a saved trip route are kept in the 'ofm-tiles' cache (see offlineTiles.ts).
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) => url.hostname === 'tiles.openfreemap.org' && (url.pathname.startsWith('/styles/') || /^\/planet\/?$/.test(url.pathname)),
+            handler: 'NetworkFirst',
+            options: { cacheName: 'ofm-meta', networkTimeoutSeconds: 4, expiration: { maxEntries: 20 } },
+          },
+          {
+            urlPattern: ({ url }) => url.hostname === 'tiles.openfreemap.org',
+            handler: 'CacheFirst',
+            options: { cacheName: 'ofm-tiles', expiration: { maxEntries: 12000, maxAgeSeconds: 60 * 60 * 24 * 60 }, cacheableResponse: { statuses: [0, 200] } },
+          },
+        ],
       },
     }),
   ],

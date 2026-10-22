@@ -2,7 +2,7 @@
 
 An installable, offline-first web app (PWA) that builds a personalised packing checklist for family car trips in India, remembers what you own and what you forgot, and adds offline maps, place search and road routing for regions you download.
 
-- **No AI, no account, no server, no tracking.** Every calculation is a deterministic, inspectable rule running on your phone.
+- **No AI, no account, no server of our own, no tracking.** Every calculation is a deterministic, inspectable rule running on your phone. Route planning uses free public OpenStreetMap services and sends only place names/coordinates — never family details.
 - **Works in airplane mode** once installed. Map regions are a separate, explicit download.
 - **Everything stays on the device** (IndexedDB). Backups are JSON files you export yourself. Optional family sync shares data between two phones through an end-to-end encrypted file in your own private GitHub repository.
 
@@ -17,7 +17,11 @@ Built for one family — two adults and a toddler (20 months at the time of writ
 | Stages and reminders | Pack in advance → night before → departure morning → in the cabin → verify. A dated schedule, exportable as calendar events (.ics) with alerts, because phone browsers cannot reliably notify when closed. |
 | Inventory | Quantities, storage location, expiry, replenish flags, owner. Trips mark owned items and list only the shortfall to buy; expired stock is ignored. |
 | Learning without AI | Post-trip review: used / not needed / ran out / forgot. Ran-out consumables grow (capped), forgotten items go to top priority, items unused twice become optional — **safety-critical items are never demoted**. |
-| Offline maps | PMTiles vector maps from IndexedDB, offline place search, nearby fuel/hospitals/pharmacies/food/toilets, offline road routing on major roads, towns and main roads on a route, toddler break suggestions, saved places and routes. Clear separation between “app installed” and “map data downloaded”. |
+| Automatic trip planner | Type “from” and “to” — the app finds 2–3 road routes (fastest / most national highway / shortest) with km, realistic driving time (×1.25 for Indian roads), roads used, overnight-split for long drives, ghat detection from altitude, a 16-day weather forecast that feeds the packing list, a departure time that beats city traffic and sunset, timed breaks matched to meals, **the best family-friendly restaurant in every 100 km** (with Google Maps buttons for reviews), sights on the way and at the destination, hospitals every 50 km, fuel gaps, fuel cost and a WhatsApp-shareable plan. Free OpenStreetMap services, no keys. |
+| Route map offline | “Save map for offline” stores the map along the route (and the destination town at street level) on the phone, within OpenFreeMap’s fair-use limits. |
+| Separate lists | One tap each: Car, the baby, each adult, family/shared — with counts left. |
+| Buy or bring | Every item sorted into: buy before you leave, bring (hard to find on the road), carry some and buy the rest on the way, provided by the hotel, bring from home, or optional — with a reason and a shareable shopping list. |
+| Offline maps (advanced) | PMTiles vector maps from IndexedDB, offline place search, nearby fuel/hospitals/pharmacies/food/toilets, offline road routing on major roads, towns and main roads on a route, toddler break suggestions, saved places and routes. Clear separation between “app installed” and “map data downloaded”. |
 | Family sync | Optional: you and your partner run the app on your own phones and share one family dataset through an **encrypted file in a private GitHub repository**. Per-item merge, deletions propagate, works offline and syncs when back online. |
 | Backup | Export/import JSON (merge or replace), validated, version-aware. Delete-everything option. |
 
@@ -92,7 +96,7 @@ docs/
 ## Honest limitations (summary)
 
 - Not turn-by-turn navigation. Offline routes use major roads with estimated speeds and ignore traffic, closures, tolls and turn restrictions.
-- No live weather, traffic, business hours or road closures — the app says so wherever it matters.
+- No live traffic or road closures (use the Google Maps button). Restaurant picks use OpenStreetMap tags, not star ratings — check reviews via the Google Maps button. Free services can be slow or rate-limited; the app retries a backup server and always lets you enter distances by hand.
 - Offline search covers mapped towns and points of interest, not street addresses.
 - iOS may clear data for web apps that are not added to the Home Screen; downloads pause when the app is in the background. Back up regularly.
 - Health items never include doses. Ask your paediatrician.

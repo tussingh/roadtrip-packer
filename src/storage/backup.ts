@@ -190,7 +190,7 @@ export async function importBackup(text: string, mode: ImportMode, opts: { sync?
     const incoming = { ...defaultSettings(), ...(d.settings as Partial<Settings>), id: 'settings' as const };
     let next: Settings;
     if (mode === 'replace') next = { ...incoming, theme: current.theme, lastBackupAt: current.lastBackupAt, onboarded: true };
-    else if (opts.sync) next = incoming.updatedAt > current.updatedAt ? { ...current, assumptions: incoming.assumptions, homeCity: incoming.homeCity, updatedAt: incoming.updatedAt } : current;
+    else if (opts.sync) next = incoming.updatedAt > current.updatedAt ? { ...current, assumptions: incoming.assumptions, homeCity: incoming.homeCity, car: incoming.car ?? current.car, updatedAt: incoming.updatedAt } : current;
     else next = { ...current, assumptions: { ...current.assumptions, ...incoming.assumptions } };
     await tx.objectStore('meta').put(next);
   }

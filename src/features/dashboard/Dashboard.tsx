@@ -80,6 +80,14 @@ export function Dashboard() {
               <Icon name="flag" /> Ready?
             </a>
           </div>
+          <div className="row-actions" style={{ marginTop: 8 }}>
+            <a className="btn" style={{ flex: 1 }} href={`#/trip/${next.id}/route`}>
+              <Icon name="route" /> Route & stops
+            </a>
+            <a className="btn" style={{ flex: 1 }} href={`#/trip/${next.id}/buy`}>
+              <Icon name="bag" /> Buy or bring
+            </a>
+          </div>
           {due && (
             <a className="card card--pad" href={`#/trip/${next.id}/pack`} style={{ display: 'block', marginTop: 12, textDecoration: 'none', color: 'inherit' }}>
               <strong>Due now: {due.title}</strong>
@@ -152,7 +160,7 @@ export function Dashboard() {
             <ListLink href="#/essentials" icon="car" title="Road trip essentials" meta="Vehicle kit and pre-departure checks" />
           </li>
           <li>
-            <ListLink href="#/maps" icon="map" title="Offline maps" meta="Regions, places and routes on this device" />
+            <ListLink href="#/maps" icon="map" title="Maps" meta="Trip route maps, saved offline maps and regions" />
           </li>
         </ul>
       </section>
