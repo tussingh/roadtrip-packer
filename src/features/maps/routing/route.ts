@@ -144,7 +144,7 @@ export function suggestBreaks(route: RouteResult, poi: PoiIndex, everyHours: num
       .filter((c) => Math.abs(c.alongM - target) <= searchM)
       .sort((a, b) => Math.abs(a.alongM - target) - Math.abs(b.alongM - target))
       .slice(0, 4)
-      .map((c) => ({ name: c.name || '(unnamed)', kind: c.kind, alongM: c.alongM, offM: c.offM, lon: c.lon, lat: c.lat }));
+      .map((c) => ({ name: c.name, kind: c.kind, alongM: c.alongM, offM: c.offM, lon: c.lon, lat: c.lat }));
     out.push({ targetAlongM: target, atHours: target / avgMs / 3600, point: pointAlong(route.geometry, target, cum), options: near });
   }
   return out;

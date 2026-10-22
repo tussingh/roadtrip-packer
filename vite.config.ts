@@ -34,7 +34,7 @@ export default defineConfig({
       },
       workbox: {
         // Precache the whole app shell + map glyphs/sprites so it opens in airplane mode.
-        globPatterns: ['**/*.{js,css,html,svg,png,woff2,pbf,json,webmanifest}'],
+        globPatterns: ['**/*.{js,mjs,css,html,svg,png,woff2,pbf,json,webmanifest}'],
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         navigateFallback: 'index.html',
         cleanupOutdatedCaches: true,

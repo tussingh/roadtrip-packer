@@ -51,7 +51,7 @@ export function parseGraph(bytes: Uint8Array): RoadGraph {
   const bbox: RoadGraph['bbox'] = [dv.getFloat64(20, true), dv.getFloat64(28, true), dv.getFloat64(36, true), dv.getFloat64(44, true)];
   let o = buf.byteOffset + GRAPH_HEADER_BYTES;
   const take32 = (count: number, Ctor: typeof Int32Array | typeof Uint32Array) => {
-    const arr = new Ctor(buf.buffer, o, count);
+    const arr = new Ctor(buf.buffer as ArrayBuffer, o, count);
     o += count * 4;
     return arr;
   };
@@ -93,7 +93,7 @@ export function parseGraph(bytes: Uint8Array): RoadGraph {
 export function nearestNode(g: RoadGraph, p: LonLat, maxM: number): { node: number; distM: number } | null {
   const cx = Math.floor(p[0] / GRID);
   const cy = Math.floor(p[1] / GRID);
-  let best: { node: number; distM: number } | null = null;
+  let best = null as { node: number; distM: number } | null;
   const maxRing = Math.ceil(maxM / 1800) + 1;
   for (let r = 0; r <= maxRing; r++) {
     for (let dx = -r; dx <= r; dx++) {
